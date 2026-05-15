@@ -617,7 +617,7 @@
       <nav class="nav" aria-label="Ana gezinme">
         <a class="active" href="#dashboard">Hasta Paneli</a>
         <a href="#scanner">NovaVision Tarayıcı</a>
-        <a href="#medicine-guide">Hasta İlaç Rehberi</a>
+        <a href="#medicine-guide">Hasta Reçete Rehberi</a>
         <a href="#drug-risk">İlaç Riski</a>
         <a href="#oncology">Onkoloji Tahmini</a>
         <a href="#doctor">Doktor Onayı</a>
@@ -712,8 +712,8 @@
           <article class="panel span-12" id="scanner">
             <div class="panel-title">
               <div>
-                <h4>NovaVision İlaç Tarayıcı</h4>
-                <p>İlaç kutusu veya reçete görseli risk motoru için ilaç listesine dönüştürülür.</p>
+                <h4>NovaVision Reçete OCR Tarayıcı</h4>
+                <p>Reçete fotoğrafındaki metin OCR ile okunur; ilaç adları backend'e gönderilip reçete özeti ve risk analizi için kullanılır.</p>
               </div>
               <span class="pill info">Simülasyon entegrasyonu hazır</span>
             </div>
@@ -721,11 +721,11 @@
             <div class="scanner">
               <div class="dropzone">
                 <div>
-                  <strong>İlaç kutusu veya reçete görseli yükleyin</strong>
-                  <p class="footer-note">Bu hackathon MVP'sinde NovaVision çıktısı demo JSON ile simüle edilir; API mimarisi gerçek entegrasyona hazırdır.</p>
+                  <strong>Reçete fotoğrafı yükleyin</strong>
+                  <p class="footer-note">NovaVision OCR Text Detection reçetedeki yazıyı okur. Demo modunda OCR sonucu backend tarafından simüle edilir.</p>
                   <input type="file" id="imageInput" accept="image/*">
                   <div style="margin-top:14px;">
-                    <button class="btn light" onclick="scanMedications()">NovaVision ile Tara</button>
+                    <button class="btn light" onclick="scanPrescriptionFromScanner()">NovaVision ile Reçeteyi Oku</button>
                   </div>
                 </div>
               </div>
@@ -733,8 +733,8 @@
               <div>
                 <div class="panel-title">
                   <div>
-                    <h4>NovaVision Tarafından Algılananlar</h4>
-                    <p>Güven skorları backend risk akışına aktarılır.</p>
+                    <h4>OCR Sonucunda Bulunan İlaçlar</h4>
+                    <p>Demo için bulunan ilaç listesi risk motoruna da aktarılabilir.</p>
                   </div>
                 </div>
                 <div class="scan-output" id="scanOutput"></div>
@@ -748,38 +748,38 @@
           <article class="panel span-12" id="medicine-guide">
             <div class="panel-title">
               <div>
-                <h4>Hasta İlaç Rehberi</h4>
-                <p>Hasta tek bir ilaç fotoğrafı yükler; NovaVision ilacı tanır ve sistem reçete özeti gibi anlaşılır kullanım bilgisi gösterir.</p>
+                <h4>Hasta Reçete Rehberi</h4>
+                <p>Hasta reçete fotoğrafı yükler; NovaVision OCR metni okur, backend ilaçları bulur ve anlaşılır reçete özeti kartları üretir.</p>
               </div>
-              <span class="pill info">Yan özellik</span>
+              <span class="pill info">NovaVision OCR</span>
             </div>
 
             <div class="guide-grid">
               <div class="dropzone">
                 <div>
-                  <strong>Tek ilaç kutusu fotoğrafı yükleyin</strong>
-                  <p class="footer-note">Demo için seçili hastanın ilaçlarından biri simüle edilir. Gerçek entegrasyonda NovaVision object detection çıktısı backend'e gönderilir.</p>
-                  <input type="file" id="guideImageInput" accept="image/*">
+                  <strong>Reçete fotoğrafı yükleyin</strong>
+                  <p class="footer-note">Demo için NovaVision OCR çıktısı simüle edilir: “Parol 500 mg günde 2 kez 5 gün. Augmentin 1000 mg sabah akşam 7 gün.”</p>
+                  <input type="file" id="prescriptionImageInput" accept="image/*">
                   <div style="margin-top:14px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-                    <button class="btn light" onclick="scanPatientMedicine()">İlacı Tanı</button>
-                    <a class="btn" href="https://suite.novavision.ai/" target="_blank" rel="noreferrer">NovaVision Panelini Aç</a>
+                    <button class="btn light" onclick="scanPrescription()">NovaVision Reçeteyi Tara</button>
+                    <a class="btn" href="https://suite.novavision.ai/" target="_blank" rel="noreferrer">NovaVision Reçete Panelini Aç</a>
                   </div>
                 </div>
               </div>
 
-              <div class="medicine-card" id="medicineGuideCard">
+              <div class="medicine-card">
                 <div class="panel-title">
                   <div>
-                    <h4>Reçete Özeti</h4>
-                    <p>İlaç tanındığında kullanım talimatları burada görünür.</p>
+                    <h4>OCR ile Okunan Metin</h4>
+                    <p>NovaVision reçete fotoğrafından bu metni çıkarır.</p>
                   </div>
                   <span class="pill medium">Bekliyor</span>
                 </div>
-                <ul class="explain-list">
-                  <li>İlaç fotoğrafı yüklendikten sonra etkin madde, kullanım zamanı, haftalık kullanım günleri, uyarılar ve saklama bilgisi gösterilir.</li>
-                </ul>
+                <div class="med-item" id="ocrTextBox">Henüz reçete metni okunmadı.</div>
+                <p class="footer-note">Doz tahmini yapılmaz. Doz, sıklık ve süre bilgisi OCR metninden ya da doktor reçete verisinden alınır.</p>
               </div>
             </div>
+            <div id="prescriptionCards" style="margin-top:18px;"></div>
           </article>
 
           <article class="panel span-12">
@@ -791,10 +791,10 @@
               <span class="pill info">60 puanlık katman</span>
             </div>
             <ul class="integration-steps">
-              <li><strong>Model:</strong> NovaVision Suite içinde Object Detection veya Classification akışı oluşturulur; sınıflar ilaç kutusu/etiket/reçete alanı olarak tanımlanır.</li>
-              <li><strong>Çıktı:</strong> NovaVision'ın ürettiği ilaç adı, confidence skoru ve gerekiyorsa bounding box bilgisi JSON olarak alınır.</li>
-              <li><strong>Ara katman:</strong> Bizim backend'deki <code>/scan-medications</code> ve <code>/scan-medicine-guide</code> endpointleri bu JSON'u karşılar.</li>
-              <li><strong>Demo güvenliği:</strong> API anahtarı ve gerçek panel erişimi hazır değilse simülasyon JSON'u kullanılır; mimari yine NovaVision entegrasyonuna uygun anlatılır.</li>
+              <li><strong>Model:</strong> NovaVision Suite içinde OCR Text Detection akışı oluşturulur; reçete görselindeki yazı okunur.</li>
+              <li><strong>Çıktı:</strong> NovaVision OCR metni backend'e gönderilir. Örnek: <code>Parol 500 mg günde 2 kez 5 gün...</code></li>
+              <li><strong>Ara katman:</strong> Bizim backend'deki <code>/prescription-scan</code> endpointi OCR metnindeki ilaç adlarını bulur.</li>
+              <li><strong>Demo güvenliği:</strong> Gerçek API erişimi hazır değilse aynı OCR metni simülasyon olarak kullanılır; çalışan demo korunur.</li>
             </ul>
           </article>
 
@@ -1069,6 +1069,47 @@
       }
     };
 
+    const prescriptionScanDemo = {
+      patient_id: "P001",
+      source: "NovaVision OCR Text Detection simülasyon çıktısı",
+      ocr_text: "Parol 500 mg günde 2 kez 5 gün. Augmentin 1000 mg sabah akşam 7 gün.",
+      medication_count: 2,
+      medications: [
+        {
+          name: "Parol",
+          display_name: "Parol 500 mg",
+          active_ingredient: "Parasetamol",
+          purpose: "Ağrı ve ateş şikayetlerini azaltmak için kullanılır.",
+          dose: "500 mg",
+          frequency: "günde 2 kez",
+          time: "Reçete metnine göre",
+          duration: "5 gün",
+          raw_instruction: "Parol 500 mg günde 2 kez 5 gün",
+          side_effects: ["Bulantı", "Cilt döküntüsü", "Nadir durumlarda karaciğer yükü"],
+          warnings: ["Günlük toplam doz aşılmamalıdır.", "Karaciğer hastalığı olan hastalarda doktor değerlendirmesi gerekir.", "Alkol kullanımı varsa dikkatli olunmalıdır."],
+          alternative: "Doktor uygun görürse farklı ağrı kesici seçenekler değerlendirilebilir.",
+          doctor_approval: "Gerekli",
+          safety_note: "Bu bilgi doktor reçetesine dayalıdır. Tedavi kararı doktor onayı gerektirir."
+        },
+        {
+          name: "Augmentin",
+          display_name: "Augmentin 1000 mg",
+          active_ingredient: "Amoksisilin + Klavulanik asit",
+          purpose: "Bakteriyel enfeksiyonların tedavisinde kullanılan antibiyotiktir.",
+          dose: "1000 mg",
+          frequency: "sabah akşam",
+          time: "Sabah ve akşam",
+          duration: "7 gün",
+          raw_instruction: "Augmentin 1000 mg sabah akşam 7 gün",
+          side_effects: ["İshal", "Mide bulantısı", "Alerjik reaksiyon", "Cilt döküntüsü"],
+          warnings: ["Antibiyotik tedavisi doktorun belirttiği süre tamamlanmadan kesilmemelidir.", "Penisilin alerjisi olan hastalarda kullanılmamalıdır.", "Şiddetli ishal veya alerji belirtisi olursa doktora başvurulmalıdır."],
+          alternative: "Penisilin alerjisinde doktor farklı antibiyotik grubu değerlendirebilir.",
+          doctor_approval: "Gerekli",
+          safety_note: "Bu bilgi doktor reçetesine dayalıdır. Tedavi kararı doktor onayı gerektirir."
+        }
+      ]
+    };
+
     let selectedPatient = patients[0];
     let detectedMedications = [];
     let latestDrugScore = null;
@@ -1090,7 +1131,7 @@
       renderPatient();
       renderScanOutput();
       renderEmptyDrugRisk();
-      resetMedicineGuide();
+      resetPrescriptionScan();
       resetOncology();
       updateMetrics();
       document.getElementById("decisionLog").textContent = "Doktor kararı bekleniyor.";
@@ -1142,65 +1183,94 @@
       updateMetrics();
     }
 
-    function scanPatientMedicine() {
-      const candidate = selectedPatient.currentDrugs[0] || "Warfarin";
-      const guide = medicineGuides[candidate] || medicineGuides.Warfarin;
-      renderMedicineGuide(candidate, guide, 0.96);
+    function scanPrescriptionFromScanner() {
+      detectedMedications = [
+        { name: "Parol", confidence: 0.96 },
+        { name: "Augmentin", confidence: 0.93 }
+      ];
+      renderScanOutput();
+      updateMetrics();
+      scanPrescription();
+      document.querySelector("#medicine-guide").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
-    function renderMedicineGuide(name, guide, confidence) {
-      const percent = Math.round(confidence * 100);
-      document.getElementById("medicineGuideCard").innerHTML = `
+    async function scanPrescription() {
+      resetPrescriptionScan("NovaVision OCR sonucu bekleniyor...");
+      try {
+        const response = await fetch("http://127.0.0.1:8000/prescription-scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ patient_id: selectedPatient.id, image: "uploaded_prescription_demo.jpg" })
+        });
+
+        if (!response.ok) {
+          throw new Error("Backend yanıt vermedi");
+        }
+
+        const result = await response.json();
+        renderPrescriptionScan(result);
+      } catch (error) {
+        renderPrescriptionScan({
+          ...prescriptionScanDemo,
+          patient_id: selectedPatient.id,
+          source: "Backend kapalı olduğu için frontend simülasyon çıktısı"
+        });
+      }
+    }
+
+    function renderPrescriptionScan(result) {
+      document.getElementById("ocrTextBox").textContent = result.ocr_text;
+
+      if (!result.medications.length) {
+        document.getElementById("prescriptionCards").innerHTML = `
+          <div class="med-item">OCR metninde kayıtlı ilaç veri tabanıyla eşleşen ilaç bulunamadı.</div>
+        `;
+        return;
+      }
+
+      document.getElementById("prescriptionCards").innerHTML = `
         <div class="panel-title">
           <div>
-            <h4>Reçete Özeti</h4>
-            <p>NovaVision tarafından tanınan ilaç bilgisi.</p>
+            <h4>Bulunan İlaçlar</h4>
+            <p>${result.source} ile ${result.medication_count} ilaç bulundu.</p>
           </div>
-          <span class="pill info">Güven: ${percent}%</span>
+          <span class="pill info">${result.medication_count} ilaç</span>
         </div>
-        <div>
-          <h5>${name}</h5>
-          <p class="footer-note" style="margin-top:6px;">${guide.purpose}</p>
-        </div>
-        <div class="schedule-grid">
-          <div class="schedule-box"><span>Etkin madde</span><strong>${guide.activeIngredient}</strong></div>
-          <div class="schedule-box"><span>Ne kadar?</span><strong>${guide.dose}</strong></div>
-          <div class="schedule-box"><span>Ne zaman?</span><strong>${guide.time}</strong></div>
-          <div class="schedule-box"><span>Haftada kaç gün?</span><strong>${guide.weeklyDays}</strong></div>
-          <div class="schedule-box"><span>İlaç türü</span><strong>${guide.category}</strong></div>
-          <div class="schedule-box"><span>Saklama</span><strong>${guide.storage}</strong></div>
-        </div>
-        <div class="facts">
-          <div class="fact"><span>Yemekle ilişkisi</span><strong>${guide.foodNote}</strong></div>
-          <div class="fact"><span>İçerik</span><strong>${guide.ingredients.join(", ")}</strong></div>
-        </div>
-        <div>
-          <div class="panel-title" style="margin-bottom:8px;">
-            <div>
-              <h4>Hasta İçin Uyarılar</h4>
-              <p>Bu bölüm reçete yerine geçmez; doktor/eczacı bilgilendirmesini destekler.</p>
-            </div>
-          </div>
-          <ul class="explain-list">
-            ${guide.warnings.map(warning => `<li>${warning}</li>`).join("")}
-          </ul>
+        <div class="grid">
+          ${result.medications.map(medication => `
+            <article class="medicine-card span-6">
+              <div class="panel-title">
+                <div>
+                  <h4>${medication.display_name}</h4>
+                  <p>${medication.raw_instruction}</p>
+                </div>
+                <span class="pill high">Doktor onayı ${medication.doctor_approval.toLowerCase()}</span>
+              </div>
+              <div class="schedule-grid">
+                <div class="schedule-box"><span>Etken madde</span><strong>${medication.active_ingredient}</strong></div>
+                <div class="schedule-box"><span>Doz</span><strong>${medication.dose}</strong></div>
+                <div class="schedule-box"><span>Kullanım sıklığı</span><strong>${medication.frequency}</strong></div>
+                <div class="schedule-box"><span>Kullanım zamanı</span><strong>${medication.time}</strong></div>
+                <div class="schedule-box"><span>Kullanım süresi</span><strong>${medication.duration}</strong></div>
+                <div class="schedule-box"><span>Muadil notu</span><strong>${medication.alternative}</strong></div>
+              </div>
+              <div class="facts">
+                <div class="fact"><span>Kullanım amacı</span><strong>${medication.purpose}</strong></div>
+                <div class="fact"><span>Olası yan etkiler</span><strong>${medication.side_effects.join(", ")}</strong></div>
+              </div>
+              <ul class="explain-list">
+                ${medication.warnings.map(warning => `<li>${warning}</li>`).join("")}
+              </ul>
+              <div class="decision-log">${medication.safety_note}</div>
+            </article>
+          `).join("")}
         </div>
       `;
     }
 
-    function resetMedicineGuide() {
-      document.getElementById("medicineGuideCard").innerHTML = `
-        <div class="panel-title">
-          <div>
-            <h4>Reçete Özeti</h4>
-            <p>İlaç tanındığında kullanım talimatları burada görünür.</p>
-          </div>
-          <span class="pill medium">Bekliyor</span>
-        </div>
-        <ul class="explain-list">
-          <li>İlaç fotoğrafı yüklendikten sonra etkin madde, kullanım zamanı, haftalık kullanım günleri, uyarılar ve saklama bilgisi gösterilir.</li>
-        </ul>
-      `;
+    function resetPrescriptionScan(message = "Henüz reçete metni okunmadı.") {
+      document.getElementById("ocrTextBox").textContent = message;
+      document.getElementById("prescriptionCards").innerHTML = "";
     }
 
     function matchRule(medA, medB) {
@@ -1383,7 +1453,7 @@
       document.getElementById("patientSelect").value = "P001";
       selectPatient("P001");
       scanMedications();
-      scanPatientMedicine();
+      scanPrescription();
       analyzeDrugRisk();
       predictChemoRisk();
       doctorDecision("Ek klinik/genetik test istendi");

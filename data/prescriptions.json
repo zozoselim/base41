@@ -1,0 +1,8 @@
+[
+  {
+    "prescription_id": "RX-DEMO-001",
+    "patient_id": "P001",
+    "ocr_text": "Parol 500 mg günde 2 kez 5 gün. Augmentin 1000 mg sabah akşam 7 gün.",
+    "source": "NovaVision OCR Text Detection simülasyon çıktısı"
+  }
+]

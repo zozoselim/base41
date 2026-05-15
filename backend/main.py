@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
 from itertools import combinations
 from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 
@@ -20,6 +22,15 @@ app = FastAPI(
 )
 
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 class ScanMedicationRequest(BaseModel):
     patient_id: str = "P001"
     image: str | None = None
@@ -29,6 +40,12 @@ class ScanMedicineGuideRequest(BaseModel):
     patient_id: str = "P001"
     image: str | None = None
     detected_name: str | None = None
+
+
+class PrescriptionScanRequest(BaseModel):
+    patient_id: str = "P001"
+    image: str | None = None
+    ocr_text: str | None = None
 
 
 class AnalyzeDrugRiskRequest(BaseModel):
@@ -72,6 +89,14 @@ def medicine_guides():
     return load_json("medicine_guides.json")
 
 
+def medication_info():
+    return load_json("medication_info.json")
+
+
+def demo_prescriptions():
+    return load_json("prescriptions.json")
+
+
 def find_patient(patient_id: str):
     patient = next((item for item in patients() if item["patient_id"] == patient_id), None)
     if not patient:
@@ -110,6 +135,28 @@ def match_interaction(drug_a: str, drug_b: str):
         if {rule["drug_a"], rule["drug_b"]} == {drug_a, drug_b}:
             return rule
     return None
+
+
+def extract_usage_instruction(ocr_text: str, medication_name: str) -> dict:
+    pattern = rf"{re.escape(medication_name)}\s*([^.]*)"
+    match = re.search(pattern, ocr_text, flags=re.IGNORECASE)
+    instruction = match.group(0).strip() if match else medication_name
+
+    dose_match = re.search(r"(\d+\s*mg)", instruction, flags=re.IGNORECASE)
+    frequency_match = re.search(
+        r"(günde\s+\d+\s+kez|sabah\s+akşam|günde\s+bir\s+kez)",
+        instruction,
+        flags=re.IGNORECASE,
+    )
+    duration_match = re.search(r"(\d+\s+gün)", instruction, flags=re.IGNORECASE)
+
+    return {
+        "raw_instruction": instruction,
+        "dose": dose_match.group(1) if dose_match else "Reçete metninde belirtilmemiş",
+        "frequency": frequency_match.group(1) if frequency_match else "Reçete metninde belirtilmemiş",
+        "time": "Sabah ve akşam" if "sabah akşam" in instruction.lower() else "Reçete metnine göre",
+        "duration": duration_match.group(1) if duration_match else "Reçete metninde belirtilmemiş",
+    }
 
 
 @app.get("/patients")
@@ -168,6 +215,49 @@ def scan_medicine_guide(payload: ScanMedicineGuideRequest):
         },
         "prescription_summary": guide,
         "safety_note": "Bu bilgi reçete veya doktor/eczacı danışmanlığının yerine geçmez.",
+    }
+
+
+@app.post("/prescription-scan")
+def prescription_scan(payload: PrescriptionScanRequest):
+    find_patient(payload.patient_id)
+    prescriptions = demo_prescriptions()
+    demo = next(
+        (item for item in prescriptions if item["patient_id"] == payload.patient_id),
+        prescriptions[0],
+    )
+    ocr_text = payload.ocr_text or demo["ocr_text"]
+    found_medications = []
+
+    for medication_name, info in medication_info().items():
+        if re.search(rf"\b{re.escape(medication_name)}\b", ocr_text, flags=re.IGNORECASE):
+            usage = extract_usage_instruction(ocr_text, medication_name)
+            found_medications.append(
+                {
+                    "name": medication_name,
+                    "display_name": info["display_name"],
+                    "active_ingredient": info["active_ingredient"],
+                    "purpose": info["purpose"],
+                    "dose": usage["dose"],
+                    "frequency": usage["frequency"],
+                    "time": usage["time"],
+                    "duration": usage["duration"],
+                    "raw_instruction": usage["raw_instruction"],
+                    "side_effects": info["side_effects"],
+                    "warnings": info["warnings"],
+                    "alternative": info["alternative"],
+                    "doctor_approval": info["doctor_approval"],
+                    "safety_note": "Bu bilgi doktor reçetesine dayalıdır. Tedavi kararı doktor onayı gerektirir.",
+                }
+            )
+
+    return {
+        "patient_id": payload.patient_id,
+        "source": "NovaVision OCR Text Detection simülasyon çıktısı",
+        "image": payload.image,
+        "ocr_text": ocr_text,
+        "medication_count": len(found_medications),
+        "medications": found_medications,
     }
 
 

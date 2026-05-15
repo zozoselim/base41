@@ -1,0 +1,73 @@
+{
+  "Parol": {
+    "display_name": "Parol 500 mg",
+    "active_ingredient": "Parasetamol",
+    "purpose": "Ağrı ve ateş şikayetlerini azaltmak için kullanılır.",
+    "side_effects": [
+      "Bulantı",
+      "Cilt döküntüsü",
+      "Nadir durumlarda karaciğer yükü"
+    ],
+    "warnings": [
+      "Günlük toplam doz aşılmamalıdır.",
+      "Karaciğer hastalığı olan hastalarda doktor değerlendirmesi gerekir.",
+      "Alkol kullanımı varsa dikkatli olunmalıdır."
+    ],
+    "alternative": "Doktor uygun görürse farklı ağrı kesici seçenekler değerlendirilebilir.",
+    "doctor_approval": "Gerekli"
+  },
+  "Augmentin": {
+    "display_name": "Augmentin 1000 mg",
+    "active_ingredient": "Amoksisilin + Klavulanik asit",
+    "purpose": "Bakteriyel enfeksiyonların tedavisinde kullanılan antibiyotiktir.",
+    "side_effects": [
+      "İshal",
+      "Mide bulantısı",
+      "Alerjik reaksiyon",
+      "Cilt döküntüsü"
+    ],
+    "warnings": [
+      "Antibiyotik tedavisi doktorun belirttiği süre tamamlanmadan kesilmemelidir.",
+      "Penisilin alerjisi olan hastalarda kullanılmamalıdır.",
+      "Şiddetli ishal veya alerji belirtisi olursa doktora başvurulmalıdır."
+    ],
+    "alternative": "Penisilin alerjisinde doktor farklı antibiyotik grubu değerlendirebilir.",
+    "doctor_approval": "Gerekli"
+  },
+  "Ibuprofen": {
+    "display_name": "Ibuprofen",
+    "active_ingredient": "Ibuprofen",
+    "purpose": "Ağrı, ateş ve inflamasyon şikayetlerini azaltmak için kullanılır.",
+    "side_effects": [
+      "Mide ağrısı",
+      "Mide kanaması riski",
+      "Böbrek yükü",
+      "Tansiyon dengesizliği"
+    ],
+    "warnings": [
+      "Warfarin veya aspirin kullanan hastalarda doktor onayı olmadan kullanılmamalıdır.",
+      "Böbrek hastalığı veya mide ülseri öyküsü varsa dikkatli olunmalıdır.",
+      "Tok karnına alınması mide yan etkilerini azaltabilir."
+    ],
+    "alternative": "Paracetamol doktor kontrolünde değerlendirilebilir.",
+    "doctor_approval": "Gerekli"
+  },
+  "Warfarin": {
+    "display_name": "Warfarin",
+    "active_ingredient": "Warfarin sodyum",
+    "purpose": "Kan pıhtısı oluşum riskini azaltmak için kullanılan antikoagülandır.",
+    "side_effects": [
+      "Kanama",
+      "Morarma",
+      "Burun kanaması",
+      "INR dengesizliği"
+    ],
+    "warnings": [
+      "INR takibi aksatılmamalıdır.",
+      "Aspirin ve ibuprofen ile birlikte kullanım kanama riskini artırabilir.",
+      "Kanama belirtisi olursa doktora başvurulmalıdır."
+    ],
+    "alternative": "Alternatif antikoagülan kararı yalnızca doktor tarafından verilir.",
+    "doctor_approval": "Gerekli"
+  }
+}
