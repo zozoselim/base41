@@ -1,0 +1,1119 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OncoSafe Vision AI</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --surface: #ffffff;
+      --surface-2: #eef4f7;
+      --ink: #14202b;
+      --muted: #637181;
+      --line: #dbe4ea;
+      --teal: #0f766e;
+      --teal-soft: #d9f3ef;
+      --blue: #2563eb;
+      --amber: #b7791f;
+      --amber-soft: #fff4d6;
+      --red: #b42318;
+      --red-soft: #ffe4e0;
+      --green: #247c4d;
+      --green-soft: #def7e8;
+      --shadow: 0 18px 40px rgba(20, 32, 43, 0.08);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      background: #10222f;
+      color: #f7fbff;
+      padding: 28px 22px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #22c55e, #38bdf8);
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: #07131d;
+    }
+
+    .brand h1 {
+      font-size: 18px;
+      line-height: 1.15;
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    .brand p {
+      margin: 4px 0 0;
+      color: #b9c8d4;
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .nav a {
+      color: #dce8ef;
+      text-decoration: none;
+      padding: 11px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav a.active, .nav a:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .notice {
+      margin-top: auto;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      padding: 14px;
+      color: #d7e5ed;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    main {
+      min-width: 0;
+    }
+
+    .hero {
+      background:
+        linear-gradient(90deg, rgba(16, 34, 47, 0.92), rgba(16, 34, 47, 0.7)),
+        url("https://images.unsplash.com/photo-1576671081837-49000212a370?auto=format&fit=crop&w=1800&q=80");
+      background-size: cover;
+      background-position: center;
+      color: white;
+      padding: 38px 38px 34px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+      gap: 28px;
+      align-items: end;
+      max-width: 1220px;
+    }
+
+    .eyebrow {
+      color: #9debdc;
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin: 0 0 10px;
+    }
+
+    .hero h2 {
+      font-size: clamp(34px, 5vw, 62px);
+      line-height: 1;
+      margin: 0;
+      max-width: 780px;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      font-size: 17px;
+      line-height: 1.6;
+      color: #e1edf3;
+      max-width: 790px;
+      margin: 18px 0 0;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .btn {
+      border-radius: 8px;
+      padding: 11px 15px;
+      font-weight: 800;
+      color: white;
+      background: var(--teal);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+    }
+
+    .btn.secondary {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+    }
+
+    .btn.light {
+      color: var(--ink);
+      background: white;
+      border: 1px solid var(--line);
+    }
+
+    .btn.warn {
+      background: var(--amber);
+    }
+
+    .btn.danger {
+      background: var(--red);
+    }
+
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .quick-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 96px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 25px;
+    }
+
+    .metric span {
+      color: #d5e4ed;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .content {
+      padding: 28px 38px 46px;
+      max-width: 1280px;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 22px;
+    }
+
+    .toolbar h3 {
+      font-size: 23px;
+      margin: 0;
+    }
+
+    .select {
+      min-width: 260px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 8px;
+      padding: 11px 12px;
+      color: var(--ink);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+      min-width: 0;
+    }
+
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+
+    .panel-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .panel-title h4 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .panel-title p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .pill {
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .pill.high { color: var(--red); background: var(--red-soft); }
+    .pill.medium { color: var(--amber); background: var(--amber-soft); }
+    .pill.low { color: var(--green); background: var(--green-soft); }
+    .pill.info { color: var(--teal); background: var(--teal-soft); }
+
+    .facts {
+      display: grid;
+      gap: 11px;
+    }
+
+    .fact {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .fact:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .fact span:first-child {
+      color: var(--muted);
+    }
+
+    .fact strong {
+      text-align: right;
+    }
+
+    .med-list, .explain-list, .timeline {
+      display: grid;
+      gap: 10px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .med-item, .explain-list li, .timeline li {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 11px 12px;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .scanner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .dropzone {
+      min-height: 230px;
+      border: 2px dashed #9db5c5;
+      border-radius: 8px;
+      background: #f8fbfd;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 18px;
+    }
+
+    .dropzone input {
+      max-width: 100%;
+      margin-top: 14px;
+    }
+
+    .scan-output {
+      display: grid;
+      gap: 11px;
+    }
+
+    .detected-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      background: #f8fbfd;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .progress {
+      height: 8px;
+      width: 100px;
+      border-radius: 999px;
+      background: #d9e6ee;
+      overflow: hidden;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      background: var(--teal);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 12px 10px;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .score-wrap {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr);
+      gap: 18px;
+      align-items: center;
+    }
+
+    .score-ring {
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: conic-gradient(var(--teal) calc(var(--score) * 1%), #e3ebf0 0);
+      position: relative;
+    }
+
+    .score-ring::after {
+      content: "";
+      position: absolute;
+      width: 116px;
+      height: 116px;
+      border-radius: 50%;
+      background: white;
+    }
+
+    .score-ring strong {
+      position: relative;
+      z-index: 1;
+      font-size: 30px;
+    }
+
+    .decision-actions {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .decision-log {
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-weight: 800;
+      min-height: 48px;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 1050px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar {
+        position: relative;
+        height: auto;
+      }
+      .hero-grid, .scanner { grid-template-columns: 1fr; }
+      .span-3, .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
+    }
+
+    @media (max-width: 700px) {
+      .hero, .content { padding-left: 18px; padding-right: 18px; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .select { min-width: 0; width: 100%; }
+      .quick-metrics, .decision-actions, .score-wrap { grid-template-columns: 1fr; }
+      .score-ring { margin: 0 auto; }
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin-bottom: 10px;
+        overflow: hidden;
+      }
+      td {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 10px;
+      }
+      td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-weight: 800;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">OS</div>
+        <div>
+          <h1>OncoSafe Vision AI</h1>
+          <p>Klinik karar destek sistemi</p>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Ana gezinme">
+        <a class="active" href="#dashboard">Hasta Paneli</a>
+        <a href="#scanner">NovaVision Tarayıcı</a>
+        <a href="#drug-risk">İlaç Riski</a>
+        <a href="#oncology">Onkoloji Tahmini</a>
+        <a href="#doctor">Doktor Onayı</a>
+      </nav>
+
+      <div class="notice">
+        Bu prototip yalnızca sentetik veri kullanır. Tanı koymaz, Oncotype DX yerine geçmez ve tedavi kararı vermez. Her öneri doktor değerlendirmesi gerektirir.
+      </div>
+    </aside>
+
+    <main>
+      <section class="hero">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">NovaVision + Açıklanabilir AI + Doktor Onayı</p>
+            <h2>OncoSafe Vision AI</h2>
+            <p>Görsel ilaç tanıma, hastaya özel ilaç etkileşim skoru, daha güvenli muadil önerileri ve onkoloji ön risk tahminini birleştiren yapay zeka destekli klinik karar destek sistemi.</p>
+            <div class="hero-actions">
+              <button class="btn" onclick="document.querySelector('#scanner').scrollIntoView({behavior:'smooth'})">Demoyu Başlat</button>
+              <button class="btn secondary" onclick="runFullDemo()">Tüm MVP Akışını Çalıştır</button>
+            </div>
+          </div>
+
+          <div class="quick-metrics">
+            <div class="metric">
+              <strong id="metricPatients">3</strong>
+              <span>Sentetik hasta profili</span>
+            </div>
+            <div class="metric">
+              <strong id="metricDetected">0</strong>
+              <span>NovaVision ile algılanan ilaç</span>
+            </div>
+            <div class="metric">
+              <strong id="metricRisk">--</strong>
+              <span>Güncel ilaç etkileşim riski</span>
+            </div>
+            <div class="metric">
+              <strong id="metricChemo">--</strong>
+              <span>Kanser tedavisi risk skoru</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="content" id="dashboard">
+        <div class="toolbar">
+          <div>
+            <h3>Doktor Demo Paneli</h3>
+            <p class="footer-note">Sentetik bir hasta seçin, ilaçları tarayın, riskleri analiz edin ve öneriyi doktor onayına gönderin.</p>
+          </div>
+          <select class="select" id="patientSelect" onchange="selectPatient(this.value)"></select>
+        </div>
+
+        <div class="grid">
+          <article class="panel span-4">
+            <div class="panel-title">
+              <div>
+                <h4>Hasta Özeti</h4>
+                <p>Sentetik klinik profil</p>
+              </div>
+              <span class="pill info" id="patientId">P001</span>
+            </div>
+            <div class="facts" id="patientFacts"></div>
+          </article>
+
+          <article class="panel span-4">
+            <div class="panel-title">
+              <div>
+                <h4>Mevcut İlaçlar</h4>
+                <p>Sentetik hasta kaydından</p>
+              </div>
+            </div>
+            <ul class="med-list" id="currentMeds"></ul>
+          </article>
+
+          <article class="panel span-4">
+            <div class="panel-title">
+              <div>
+                <h4>Risk Özeti</h4>
+                <p>Anlık hesaplanan durum</p>
+              </div>
+              <span class="pill medium" id="overviewStatus">Bekliyor</span>
+            </div>
+            <div class="facts">
+              <div class="fact"><span>İlaç risk skoru</span><strong id="overviewDrugScore">-- / 100</strong></div>
+              <div class="fact"><span>Onkoloji skoru</span><strong id="overviewCancerScore">-- / 100</strong></div>
+              <div class="fact"><span>Doktor değerlendirmesi</span><strong>Gerekli</strong></div>
+              <div class="fact"><span>Veri kaynağı</span><strong>Sentetik</strong></div>
+            </div>
+          </article>
+
+          <article class="panel span-12" id="scanner">
+            <div class="panel-title">
+              <div>
+                <h4>NovaVision İlaç Tarayıcı</h4>
+                <p>İlaç kutusu veya reçete görseli risk motoru için ilaç listesine dönüştürülür.</p>
+              </div>
+              <span class="pill info">Simülasyon entegrasyonu hazır</span>
+            </div>
+
+            <div class="scanner">
+              <div class="dropzone">
+                <div>
+                  <strong>İlaç kutusu veya reçete görseli yükleyin</strong>
+                  <p class="footer-note">Bu hackathon MVP'sinde NovaVision çıktısı demo JSON ile simüle edilir; API mimarisi gerçek entegrasyona hazırdır.</p>
+                  <input type="file" id="imageInput" accept="image/*">
+                  <div style="margin-top:14px;">
+                    <button class="btn light" onclick="scanMedications()">NovaVision ile Tara</button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div class="panel-title">
+                  <div>
+                    <h4>NovaVision Tarafından Algılananlar</h4>
+                    <p>Güven skorları backend risk akışına aktarılır.</p>
+                  </div>
+                </div>
+                <div class="scan-output" id="scanOutput"></div>
+                <div style="margin-top:14px;">
+                  <button class="btn" id="analyzeBtn" onclick="analyzeDrugRisk()" disabled>İlaç Riskini Analiz Et</button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel span-12" id="drug-risk">
+            <div class="panel-title">
+              <div>
+                <h4>İlaç Etkileşim Analizi</h4>
+                <p>Hastaya özel skorlayan kural tabanlı etkileşim motoru.</p>
+              </div>
+              <span class="pill medium" id="drugRiskBadge">Bekliyor</span>
+            </div>
+            <div id="drugRiskTable"></div>
+          </article>
+
+          <article class="panel span-6" id="oncology">
+            <div class="panel-title">
+              <div>
+                <h4>Onkoloji Risk Tahmini</h4>
+                <p>Sentetik genomik benzeri özelliklerle kemoterapi faydası ön değerlendirmesi.</p>
+              </div>
+              <button class="btn light" onclick="predictChemoRisk()">Tahmin Et</button>
+            </div>
+
+            <div class="score-wrap">
+              <div class="score-ring" id="scoreRing" style="--score:0"><strong id="scoreText">--</strong></div>
+              <div>
+                <div class="facts">
+                  <div class="fact"><span>Tahmin</span><strong id="chemoPrediction">Bekliyor</strong></div>
+                  <div class="fact"><span>Güven skoru</span><strong id="chemoConfidence">--</strong></div>
+                  <div class="fact"><span>Doktor değerlendirmesi</span><strong>Gerekli</strong></div>
+                  <div class="fact"><span>Model notu</span><strong>Genetik test değildir</strong></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-title">
+              <div>
+                <h4>Açıklanabilir Faktörler</h4>
+                <p>Onkoloji skorunun arkasındaki görünür nedenler.</p>
+              </div>
+            </div>
+            <ul class="explain-list" id="oncologyExplanation">
+              <li>Katkı sağlayan faktörleri görmek için tahmini çalıştırın.</li>
+            </ul>
+          </article>
+
+          <article class="panel span-7" id="doctor">
+            <div class="panel-title">
+              <div>
+                <h4>Doktor Onay Paneli</h4>
+                <p>Yapay zeka çıktısı doktor tarafından incelenir, düzenlenir veya reddedilir.</p>
+              </div>
+              <span class="pill high">İnsan onayı gerekli</span>
+            </div>
+            <div class="decision-actions">
+              <button class="btn" onclick="doctorDecision('Doktor tarafından onaylandı')">Onayla</button>
+              <button class="btn danger" onclick="doctorDecision('Doktor tarafından reddedildi')">Reddet</button>
+              <button class="btn warn" onclick="doctorDecision('Alternatif ilaç düzenlemesi istendi')">Muadil Düzenle</button>
+              <button class="btn light" onclick="doctorDecision('Ek klinik/genetik test istendi')">Ek Test İste</button>
+            </div>
+            <div class="decision-log" id="decisionLog">Doktor kararı bekleniyor.</div>
+          </article>
+
+          <article class="panel span-5">
+            <div class="panel-title">
+              <div>
+                <h4>Demo Akışı</h4>
+                <p>Jürinin 90 saniyede görmesi gereken akış.</p>
+              </div>
+            </div>
+            <ul class="timeline">
+              <li>1. Çoklu ilaç kullanan sentetik onkoloji hastası Ayse Demir'i seçin.</li>
+              <li>2. NovaVision simülasyon çıktısı ile ilaç görselini tarayın.</li>
+              <li>3. Warfarin + Ibuprofen için yüksek kanama riski ve Paracetamol muadilini gösterin.</li>
+              <li>4. Kanser tedavisi ön risk skorunu ve açıklamasını gösterin.</li>
+              <li>5. Doktor onayı, ret, muadil düzenleme veya ek test isteği ile bitirin.</li>
+            </ul>
+          </article>
+
+          <article class="panel span-12">
+            <div class="panel-title">
+              <div>
+                <h4>Hackathon Güvenlik Notu</h4>
+                <p>Sunumda bu ifadeyi kullanabilirsiniz.</p>
+              </div>
+            </div>
+            <p class="footer-note">
+              OncoSafe Vision AI tanı, genetik test, Oncotype DX veya doktor kararının yerine geçmez. İlaç risklerini ve onkoloji risk faktörlerini doktorlar için daha görünür hale getiren, sentetik veri tabanlı bir klinik karar destek prototipidir.
+            </p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const patients = [
+      {
+        id: "P001",
+        name: "Ayse Demir",
+        age: 67,
+        gender: "Kadın",
+        diagnoses: ["Hipertansiyon", "Meme Kanseri"],
+        allergies: ["Yok"],
+        currentDrugs: ["Warfarin", "Ibuprofen", "Lisinopril"],
+        creatinine: 1.4,
+        alt: 40,
+        ast: 35,
+        hemoglobin: 10.8,
+        cancerType: "Meme Kanseri",
+        tumorSize: 3.2,
+        grade: 3,
+        nodeStatus: 1,
+        er: 1,
+        pr: 1,
+        her2: 0,
+        ki67: 35,
+        syntheticGeneScore: 78
+      },
+      {
+        id: "P002",
+        name: "Zeynep Kaya",
+        age: 54,
+        gender: "Kadın",
+        diagnoses: ["Meme Kanseri"],
+        allergies: ["Yok"],
+        currentDrugs: ["Metformin", "Aspirin"],
+        creatinine: 0.9,
+        alt: 25,
+        ast: 22,
+        hemoglobin: 13.1,
+        cancerType: "Meme Kanseri",
+        tumorSize: 1.1,
+        grade: 1,
+        nodeStatus: 0,
+        er: 1,
+        pr: 1,
+        her2: 0,
+        ki67: 8,
+        syntheticGeneScore: 12
+      },
+      {
+        id: "P003",
+        name: "Fatma Yilmaz",
+        age: 72,
+        gender: "Kadın",
+        diagnoses: ["Diyabet", "Hipertansiyon", "Meme Kanseri"],
+        allergies: ["Penisilin"],
+        currentDrugs: ["Warfarin", "Aspirin", "Spironolactone", "Lisinopril"],
+        creatinine: 1.8,
+        alt: 60,
+        ast: 58,
+        hemoglobin: 9.9,
+        cancerType: "Meme Kanseri",
+        tumorSize: 4.1,
+        grade: 3,
+        nodeStatus: 1,
+        er: 1,
+        pr: 0,
+        her2: 0,
+        ki67: 42,
+        syntheticGeneScore: 84
+      }
+    ];
+
+    const interactionRules = [
+      { a: "Warfarin", b: "Ibuprofen", base: 60, risk: "Yüksek", sideEffect: "Kanama riski", reason: "Her iki ilaç da kanama eğilimini artırabilir.", alternative: "Paracetamol" },
+      { a: "Warfarin", b: "Aspirin", base: 65, risk: "Yüksek", sideEffect: "Kanama riski", reason: "Antikoagülan ve antiplatelet etkiler kanama riskini artırabilir.", alternative: "Doktor değerlendirmesi gerekli" },
+      { a: "Lisinopril", b: "Spironolactone", base: 60, risk: "Yüksek", sideEffect: "Hiperkalemi", reason: "Her iki ilaç da potasyum düzeyini artırabilir.", alternative: "Amlodipine" },
+      { a: "Metformin", b: "Contrast Agent", base: 42, risk: "Orta", sideEffect: "Böbrek yükü", reason: "Böbrek fonksiyonu bozulduğunda risk artar.", alternative: "Geçici durdurma ve doktor değerlendirmesi" },
+      { a: "Aspirin", b: "Ibuprofen", base: 45, risk: "Orta", sideEffect: "Gastrointestinal kanama", reason: "Her iki ilaç da mide mukozasını tahriş edebilir.", alternative: "Paracetamol" }
+    ];
+
+    const novavisionScans = {
+      P001: [
+        { name: "Warfarin", confidence: 0.94 },
+        { name: "Ibuprofen", confidence: 0.91 },
+        { name: "Lisinopril", confidence: 0.88 }
+      ],
+      P002: [
+        { name: "Metformin", confidence: 0.93 },
+        { name: "Aspirin", confidence: 0.9 }
+      ],
+      P003: [
+        { name: "Warfarin", confidence: 0.95 },
+        { name: "Aspirin", confidence: 0.92 },
+        { name: "Spironolactone", confidence: 0.89 },
+        { name: "Lisinopril", confidence: 0.86 }
+      ]
+    };
+
+    let selectedPatient = patients[0];
+    let detectedMedications = [];
+    let latestDrugScore = null;
+    let latestCancerScore = null;
+
+    function init() {
+      const select = document.getElementById("patientSelect");
+      select.innerHTML = patients.map(patient => `<option value="${patient.id}">${patient.name} - ${patient.id}</option>`).join("");
+      renderPatient();
+      renderEmptyDrugRisk();
+      renderScanOutput();
+    }
+
+    function selectPatient(patientId) {
+      selectedPatient = patients.find(patient => patient.id === patientId) || patients[0];
+      detectedMedications = [];
+      latestDrugScore = null;
+      latestCancerScore = null;
+      renderPatient();
+      renderScanOutput();
+      renderEmptyDrugRisk();
+      resetOncology();
+      updateMetrics();
+      document.getElementById("decisionLog").textContent = "Doktor kararı bekleniyor.";
+    }
+
+    function renderPatient() {
+      document.getElementById("patientId").textContent = selectedPatient.id;
+      document.getElementById("patientFacts").innerHTML = [
+        ["Ad Soyad", selectedPatient.name],
+        ["Yaş", selectedPatient.age],
+        ["Tanılar", selectedPatient.diagnoses.join(", ")],
+        ["Alerjiler", selectedPatient.allergies.join(", ")],
+        ["Hemoglobin", `${selectedPatient.hemoglobin} g/dL`],
+        ["Kreatinin", `${selectedPatient.creatinine} mg/dL`],
+        ["Kanser Profili", `${selectedPatient.cancerType}, Derece ${selectedPatient.grade}`]
+      ].map(([label, value]) => `<div class="fact"><span>${label}</span><strong>${value}</strong></div>`).join("");
+
+      document.getElementById("currentMeds").innerHTML = selectedPatient.currentDrugs
+        .map(drug => `<li class="med-item">${drug}</li>`)
+        .join("");
+    }
+
+    function renderScanOutput() {
+      const output = document.getElementById("scanOutput");
+      document.getElementById("analyzeBtn").disabled = detectedMedications.length === 0;
+
+      if (detectedMedications.length === 0) {
+        output.innerHTML = `<div class="detected-row"><span>Henüz ilaç algılanmadı.</span><span class="pill medium">Bekliyor</span></div>`;
+        return;
+      }
+
+      output.innerHTML = detectedMedications.map(item => {
+        const percent = Math.round(item.confidence * 100);
+        return `
+          <div class="detected-row">
+            <div>
+              <strong>${item.name}</strong>
+              <div class="footer-note" style="margin:2px 0 0;">Güven skoru: ${percent}%</div>
+            </div>
+            <div class="progress" aria-label="Güven skoru ${percent}%"><span style="width:${percent}%"></span></div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function scanMedications() {
+      detectedMedications = novavisionScans[selectedPatient.id] || [];
+      renderScanOutput();
+      updateMetrics();
+    }
+
+    function matchRule(medA, medB) {
+      return interactionRules.find(rule =>
+        (rule.a === medA && rule.b === medB) || (rule.a === medB && rule.b === medA)
+      );
+    }
+
+    function patientRiskFactors(patient) {
+      const factors = [];
+      let score = 0;
+
+      if (patient.age > 65) {
+        factors.push("Yaş > 65");
+        score += 10;
+      }
+      if (patient.creatinine >= 1.4) {
+        factors.push("Böbrek fonksiyonunda risk göstergesi");
+        score += 8;
+      }
+      if (patient.alt > 50 || patient.ast > 50) {
+        factors.push("Karaciğer enzimlerinde yükselme");
+        score += 7;
+      }
+      if (patient.hemoglobin < 11) {
+        factors.push("Düşük hemoglobin");
+        score += 10;
+      }
+      if (patient.diagnoses.includes("Meme Kanseri")) {
+        factors.push("Kanser hastası faktörü");
+        score += 5;
+      }
+      if (!patient.allergies.includes("Yok")) {
+        factors.push("Bilinen alerji öyküsü");
+        score += 5;
+      }
+
+      return { score, factors };
+    }
+
+    function analyzeDrugRisk() {
+      const meds = detectedMedications.map(item => item.name);
+      const patientFactors = patientRiskFactors(selectedPatient);
+      const interactions = [];
+
+      for (let i = 0; i < meds.length; i += 1) {
+        for (let j = i + 1; j < meds.length; j += 1) {
+          const rule = matchRule(meds[i], meds[j]);
+          if (rule) {
+            const score = Math.min(100, rule.base + patientFactors.score);
+            interactions.push({
+              pair: `${meds[i]} + ${meds[j]}`,
+              score,
+              level: score >= 70 ? "Yüksek" : score >= 40 ? "Orta" : "Düşük",
+              sideEffect: rule.sideEffect,
+              reason: `${rule.reason} Hastaya özel faktörler: ${patientFactors.factors.join(", ") || "Belirgin ek faktör yok"}.`,
+              alternative: rule.alternative
+            });
+          }
+        }
+      }
+
+      latestDrugScore = interactions.length ? Math.max(...interactions.map(item => item.score)) : 18;
+      renderDrugRisk(interactions);
+      updateMetrics();
+    }
+
+    function renderEmptyDrugRisk() {
+      document.getElementById("drugRiskBadge").className = "pill medium";
+      document.getElementById("drugRiskBadge").textContent = "Bekliyor";
+      document.getElementById("drugRiskTable").innerHTML = `<p class="footer-note">Etkileşim risklerini görmek için NovaVision taramasını ve ilaç analizini çalıştırın.</p>`;
+    }
+
+    function renderDrugRisk(interactions) {
+      const badge = document.getElementById("drugRiskBadge");
+      const overall = latestDrugScore >= 70 ? "Yüksek" : latestDrugScore >= 40 ? "Orta" : "Düşük";
+      const badgeClass = latestDrugScore >= 70 ? "high" : latestDrugScore >= 40 ? "medium" : "low";
+      badge.className = `pill ${badgeClass}`;
+      badge.textContent = `${overall} - ${latestDrugScore}/100`;
+
+      if (!interactions.length) {
+        document.getElementById("drugRiskTable").innerHTML = `<p class="footer-note">Algılanan ilaç listesinde riskli kombinasyon bulunmadı. Buna rağmen doktor değerlendirmesi gereklidir.</p>`;
+        return;
+      }
+
+      document.getElementById("drugRiskTable").innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>İlaç Çifti</th>
+              <th>Risk</th>
+              <th>Yan Etki</th>
+              <th>Neden</th>
+              <th>Muadil</th>
+              <th>Durum</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${interactions.map(item => `
+              <tr>
+                <td data-label="İlaç Çifti"><strong>${item.pair}</strong><br><span class="footer-note">Skor: ${item.score}/100</span></td>
+                <td data-label="Risk"><span class="pill ${item.level === "Yüksek" ? "high" : item.level === "Orta" ? "medium" : "low"}">${item.level}</span></td>
+                <td data-label="Yan Etki">${item.sideEffect}</td>
+                <td data-label="Neden">${item.reason}</td>
+                <td data-label="Muadil">${item.alternative}</td>
+                <td data-label="Durum">Doktor Değerlendirmesi</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function predictChemoRisk() {
+      const patient = selectedPatient;
+      let score = 0;
+      const reasons = [];
+
+      score += Math.min(25, patient.tumorSize * 7);
+      score += patient.grade * 10;
+      score += patient.nodeStatus ? 18 : 0;
+      score += patient.ki67 >= 30 ? 16 : patient.ki67 >= 15 ? 9 : 2;
+      score += Math.round(patient.syntheticGeneScore * 0.32);
+      if (patient.pr === 0) score += 5;
+      if (patient.age > 70) score -= 3;
+
+      if (patient.grade >= 3) reasons.push("Yüksek tümör derecesi");
+      if (patient.ki67 >= 30) reasons.push("Yüksek Ki-67 değeri");
+      if (patient.nodeStatus) reasons.push("Pozitif lenf nodu tutulumu");
+      if (patient.syntheticGeneScore >= 60) reasons.push("Yüksek sentetik genomik risk skoru");
+      if (patient.tumorSize >= 2.5) reasons.push("Daha büyük tümör boyutu");
+      if (!reasons.length) reasons.push("Daha düşük grade, küçük tümör boyutu ve düşük sentetik genomik risk skoru");
+
+      latestCancerScore = Math.max(5, Math.min(96, Math.round(score)));
+      const beneficial = latestCancerScore >= 55;
+      const confidence = beneficial ? Math.min(0.92, 0.68 + latestCancerScore / 400) : Math.max(0.66, 0.9 - latestCancerScore / 300);
+
+      document.getElementById("scoreRing").style.setProperty("--score", latestCancerScore);
+      document.getElementById("scoreText").textContent = latestCancerScore;
+      document.getElementById("chemoPrediction").textContent = beneficial ? "Kemoterapi faydalı olabilir" : "Kemoterapi gerekli olmayabilir";
+      document.getElementById("chemoConfidence").textContent = `${Math.round(confidence * 100)}%`;
+      document.getElementById("oncologyExplanation").innerHTML = reasons.map(reason => `<li>${reason}</li>`).join("");
+      updateMetrics();
+    }
+
+    function resetOncology() {
+      document.getElementById("scoreRing").style.setProperty("--score", 0);
+      document.getElementById("scoreText").textContent = "--";
+      document.getElementById("chemoPrediction").textContent = "Bekliyor";
+      document.getElementById("chemoConfidence").textContent = "--";
+      document.getElementById("oncologyExplanation").innerHTML = "<li>Katkı sağlayan faktörleri görmek için tahmini çalıştırın.</li>";
+    }
+
+    function doctorDecision(text) {
+      const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      document.getElementById("decisionLog").textContent = `${text}. Saat: ${now}. Öneri doktor kontrolünde kalır.`;
+    }
+
+    function updateMetrics() {
+      document.getElementById("metricDetected").textContent = detectedMedications.length;
+      document.getElementById("metricRisk").textContent = latestDrugScore === null ? "--" : latestDrugScore;
+      document.getElementById("metricChemo").textContent = latestCancerScore === null ? "--" : latestCancerScore;
+      document.getElementById("overviewDrugScore").textContent = latestDrugScore === null ? "-- / 100" : `${latestDrugScore} / 100`;
+      document.getElementById("overviewCancerScore").textContent = latestCancerScore === null ? "-- / 100" : `${latestCancerScore} / 100`;
+
+      const status = document.getElementById("overviewStatus");
+      if ((latestDrugScore || 0) >= 70 || (latestCancerScore || 0) >= 70) {
+        status.className = "pill high";
+        status.textContent = "Yüksek İnceleme";
+      } else if (latestDrugScore !== null || latestCancerScore !== null) {
+        status.className = "pill medium";
+        status.textContent = "İnceleme";
+      } else {
+        status.className = "pill medium";
+        status.textContent = "Bekliyor";
+      }
+    }
+
+    function runFullDemo() {
+      document.getElementById("patientSelect").value = "P001";
+      selectPatient("P001");
+      scanMedications();
+      analyzeDrugRisk();
+      predictChemoRisk();
+      doctorDecision("Ek klinik/genetik test istendi");
+      document.querySelector("#dashboard").scrollIntoView({ behavior: "smooth" });
+    }
+
+    init();
+  </script>
+</body>
+</html>

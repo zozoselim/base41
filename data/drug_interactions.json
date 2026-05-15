@@ -1,0 +1,47 @@
+[
+  {
+    "drug_a": "Warfarin",
+    "drug_b": "Ibuprofen",
+    "base_score": 60,
+    "risk_level": "Yüksek",
+    "side_effect": "Kanama riski",
+    "reason": "Her iki ilaç da kanama eğilimini artırabilir.",
+    "alternative": "Paracetamol"
+  },
+  {
+    "drug_a": "Warfarin",
+    "drug_b": "Aspirin",
+    "base_score": 65,
+    "risk_level": "Yüksek",
+    "side_effect": "Kanama riski",
+    "reason": "Antikoagülan ve antiplatelet etki kanama riskini artırabilir.",
+    "alternative": "Doktor değerlendirmesi gerekli"
+  },
+  {
+    "drug_a": "Lisinopril",
+    "drug_b": "Spironolactone",
+    "base_score": 60,
+    "risk_level": "Yüksek",
+    "side_effect": "Hiperkalemi",
+    "reason": "Her iki ilaç da potasyum düzeyini artırabilir.",
+    "alternative": "Amlodipine"
+  },
+  {
+    "drug_a": "Metformin",
+    "drug_b": "Kontrast Madde",
+    "base_score": 42,
+    "risk_level": "Orta",
+    "side_effect": "Böbrek yükü",
+    "reason": "Böbrek fonksiyonu bozulduğunda risk artar.",
+    "alternative": "Geçici durdurma ve doktor değerlendirmesi"
+  },
+  {
+    "drug_a": "Aspirin",
+    "drug_b": "Ibuprofen",
+    "base_score": 45,
+    "risk_level": "Orta",
+    "side_effect": "Gastrointestinal kanama",
+    "reason": "Her iki ilaç da mide mukozasını tahriş edebilir.",
+    "alternative": "Paracetamol"
+  }
+]

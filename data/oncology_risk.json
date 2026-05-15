@@ -1,0 +1,68 @@
+[
+  {
+    "patient_id": "P001",
+    "age": 67,
+    "tumor_size": 3.2,
+    "grade": 3,
+    "node_status": 1,
+    "er": 1,
+    "pr": 1,
+    "her2": 0,
+    "ki67": 35,
+    "synthetic_gene_score": 78,
+    "chemo_needed": 1
+  },
+  {
+    "patient_id": "P002",
+    "age": 54,
+    "tumor_size": 1.1,
+    "grade": 1,
+    "node_status": 0,
+    "er": 1,
+    "pr": 1,
+    "her2": 0,
+    "ki67": 8,
+    "synthetic_gene_score": 12,
+    "chemo_needed": 0
+  },
+  {
+    "patient_id": "P003",
+    "age": 72,
+    "tumor_size": 4.1,
+    "grade": 3,
+    "node_status": 1,
+    "er": 1,
+    "pr": 0,
+    "her2": 0,
+    "ki67": 42,
+    "synthetic_gene_score": 84,
+    "chemo_needed": 1
+  },
+  {
+    "patient_id": "P004",
+    "age": 49,
+    "tumor_size": 1.6,
+    "grade": 2,
+    "node_status": 0,
+    "er": 1,
+    "pr": 1,
+    "her2": 0,
+    "ki67": 14,
+    "synthetic_gene_score": 28,
+    "chemo_needed": 0
+  },
+  {
+    "patient_id": "P005",
+    "age": 61,
+    "tumor_size": 2.8,
+    "grade": 2,
+    "node_status": 1,
+    "er": 1,
+    "pr": 1,
+    "her2": 0,
+    "ki67": 25,
+    "synthetic_gene_score": 63,
+    "chemo_needed": 1
+  }
+]
+
