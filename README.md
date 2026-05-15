@@ -50,6 +50,15 @@ Backend'i çalıştırmak için:
 uvicorn backend.main:app --reload
 ```
 
+NovaVision gerçek API bağlantısı için opsiyonel ortam değişkenleri:
+
+```bash
+set NOVAVISION_API_URL=https://your-novavision-ocr-endpoint
+set NOVAVISION_API_KEY=your_optional_api_key
+```
+
+`NOVAVISION_API_URL` tanımlı değilse backend demo OCR metnini kullanır.
+
 Endpointler:
 
 - `GET /patients`
@@ -72,10 +81,29 @@ NovaVision tarafında:
 
 Local proje tarafında:
 
-1. `/prescription-scan` endpointi OCR metnini alır.
-2. `data/medication_info.json` içindeki ilaç adları OCR metninde aranır.
-3. Bulunan her ilaç için ayrı reçete özeti kartı döndürülür.
-4. Frontend ilaç adı, etken madde, doz, kullanım sıklığı, kullanım zamanı, kullanım süresi, yan etki, uyarı ve doktor onay durumunu gösterir.
+1. Frontend reçete fotoğrafını `multipart/form-data` ile `/prescription-scan` endpointine gönderir.
+2. Backend görseli Base64 formatına çevirir.
+3. `NOVAVISION_API_URL` tanımlıysa Base64 görsel NovaVision OCR API'ye POST edilir.
+4. `NOVAVISION_API_URL` tanımlı değilse demo OCR metni kullanılır.
+5. `data/medication_info.json` içindeki ilaç adları OCR metninde aranır.
+6. Bulunan her ilaç için ayrı reçete özeti kartı döndürülür.
+7. Frontend ilaç adı, etken madde, doz, kullanım sıklığı, kullanım zamanı, kullanım süresi, yan etki, uyarı ve doktor onay durumunu gösterir.
+
+Önemli kurallar:
+
+- NovaVision sadece OCR yapar.
+- İlaç bilgisi backend'deki JSON dosyalarından gelir.
+- Fotoğraftan tedavi kararı verilmez.
+- Doz tahmini yapılmaz; doz OCR metninden veya doktor reçete verisinden alınır.
+- Her sonuçta şu uyarı yer alır: `Bu bilgi doktor reçetesine dayalıdır. Tedavi kararı doktor onayı gerektirir.`
+
+Demo ortamında kullanılan OCR metni:
+
+```text
+Parol 500 mg günde 2 kez 5 gün. Augmentin 1000 mg sabah akşam 7 gün.
+```
+
+NovaVision OCR Text Detection app reçete fotoğrafından metin okumak için dış servis olarak konumlandırılmıştır. OncoSafe backend bu OCR metnini işler, ilaçları eşleştirir ve hasta için anlaşılır reçete özeti üretir. Demo ortamında OCR çıktısı simüle edilir; `NOVAVISION_API_URL` tanımlandığında gerçek NovaVision API çağrısı yapılabilir.
 
 Sunum cümlesi:
 

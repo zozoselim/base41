@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import base64
 import json
+import os
 import re
 from itertools import combinations
 from pathlib import Path
 from typing import Literal
+from urllib import error, request
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -40,12 +43,6 @@ class ScanMedicineGuideRequest(BaseModel):
     patient_id: str = "P001"
     image: str | None = None
     detected_name: str | None = None
-
-
-class PrescriptionScanRequest(BaseModel):
-    patient_id: str = "P001"
-    image: str | None = None
-    ocr_text: str | None = None
 
 
 class AnalyzeDrugRiskRequest(BaseModel):
@@ -159,6 +156,110 @@ def extract_usage_instruction(ocr_text: str, medication_name: str) -> dict:
     }
 
 
+def extract_ocr_text_from_response(payload: dict) -> str | None:
+    direct_text = payload.get("ocr_text") or payload.get("text") or payload.get("recognized_text")
+    if isinstance(direct_text, str) and direct_text.strip():
+        return direct_text.strip()
+
+    for container_key in ("result", "data", "output"):
+        container = payload.get(container_key)
+        if isinstance(container, dict):
+            nested_text = (
+                container.get("ocr_text")
+                or container.get("text")
+                or container.get("recognized_text")
+            )
+            if isinstance(nested_text, str) and nested_text.strip():
+                return nested_text.strip()
+
+    for list_key in ("predictions", "detections", "results"):
+        items = payload.get(list_key)
+        if not isinstance(items, list):
+            continue
+        texts = []
+        for item in items:
+            if isinstance(item, dict):
+                text = item.get("text") or item.get("label") or item.get("value")
+                if isinstance(text, str) and text.strip():
+                    texts.append(text.strip())
+            elif isinstance(item, str) and item.strip():
+                texts.append(item.strip())
+        if texts:
+            return " ".join(texts)
+
+    return None
+
+
+def call_novavision_ocr(image_base64: str, filename: str | None, content_type: str | None) -> str | None:
+    api_url = os.getenv("NOVAVISION_API_URL")
+    if not api_url:
+        return None
+
+    payload = {
+        "image_base64": image_base64,
+        "filename": filename,
+        "content_type": content_type,
+        "task": "ocr_text_detection",
+    }
+    body = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+
+    api_key = os.getenv("NOVAVISION_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    api_request = request.Request(api_url, data=body, headers=headers, method="POST")
+    try:
+        with request.urlopen(api_request, timeout=20) as response:
+            response_body = response.read().decode("utf-8")
+    except (error.URLError, TimeoutError, ValueError):
+        return None
+
+    try:
+        response_payload = json.loads(response_body)
+    except json.JSONDecodeError:
+        return response_body.strip() or None
+
+    return extract_ocr_text_from_response(response_payload)
+
+
+def build_prescription_summary(patient_id: str, ocr_text: str, source: str, image_meta: dict | None = None) -> dict:
+    find_patient(patient_id)
+    found_medications = []
+
+    for medication_name, info in medication_info().items():
+        if re.search(rf"\b{re.escape(medication_name)}\b", ocr_text, flags=re.IGNORECASE):
+            usage = extract_usage_instruction(ocr_text, medication_name)
+            found_medications.append(
+                {
+                    "name": medication_name,
+                    "display_name": info["display_name"],
+                    "active_ingredient": info["active_ingredient"],
+                    "purpose": info["purpose"],
+                    "dose": usage["dose"],
+                    "frequency": usage["frequency"],
+                    "time": usage["time"],
+                    "duration": usage["duration"],
+                    "raw_instruction": usage["raw_instruction"],
+                    "side_effects": info["side_effects"],
+                    "warnings": info["warnings"],
+                    "alternative": info["alternative"],
+                    "doctor_approval": info["doctor_approval"],
+                    "safety_note": "Bu bilgi doktor reçetesine dayalıdır. Tedavi kararı doktor onayı gerektirir.",
+                }
+            )
+
+    return {
+        "patient_id": patient_id,
+        "source": source,
+        "image": image_meta,
+        "ocr_text": ocr_text,
+        "medication_count": len(found_medications),
+        "medications": found_medications,
+        "safety_note": "Bu bilgi doktor reçetesine dayalıdır. Tedavi kararı doktor onayı gerektirir.",
+    }
+
+
 @app.get("/patients")
 def list_patients():
     return patients()
@@ -219,46 +320,52 @@ def scan_medicine_guide(payload: ScanMedicineGuideRequest):
 
 
 @app.post("/prescription-scan")
-def prescription_scan(payload: PrescriptionScanRequest):
-    find_patient(payload.patient_id)
+async def prescription_scan(
+    patient_id: str = Form("P001"),
+    image: UploadFile | None = File(None),
+    ocr_text: str | None = Form(None),
+):
+    find_patient(patient_id)
     prescriptions = demo_prescriptions()
     demo = next(
-        (item for item in prescriptions if item["patient_id"] == payload.patient_id),
+        (item for item in prescriptions if item["patient_id"] == patient_id),
         prescriptions[0],
     )
-    ocr_text = payload.ocr_text or demo["ocr_text"]
-    found_medications = []
+    image_meta = None
+    image_base64 = None
 
-    for medication_name, info in medication_info().items():
-        if re.search(rf"\b{re.escape(medication_name)}\b", ocr_text, flags=re.IGNORECASE):
-            usage = extract_usage_instruction(ocr_text, medication_name)
-            found_medications.append(
-                {
-                    "name": medication_name,
-                    "display_name": info["display_name"],
-                    "active_ingredient": info["active_ingredient"],
-                    "purpose": info["purpose"],
-                    "dose": usage["dose"],
-                    "frequency": usage["frequency"],
-                    "time": usage["time"],
-                    "duration": usage["duration"],
-                    "raw_instruction": usage["raw_instruction"],
-                    "side_effects": info["side_effects"],
-                    "warnings": info["warnings"],
-                    "alternative": info["alternative"],
-                    "doctor_approval": info["doctor_approval"],
-                    "safety_note": "Bu bilgi doktor reçetesine dayalıdır. Tedavi kararı doktor onayı gerektirir.",
-                }
-            )
+    if image:
+        image_bytes = await image.read()
+        image_base64 = base64.b64encode(image_bytes).decode("ascii")
+        image_meta = {
+            "filename": image.filename,
+            "content_type": image.content_type,
+            "size_bytes": len(image_bytes),
+            "base64_size": len(image_base64),
+        }
 
-    return {
-        "patient_id": payload.patient_id,
-        "source": "NovaVision OCR Text Detection simülasyon çıktısı",
-        "image": payload.image,
-        "ocr_text": ocr_text,
-        "medication_count": len(found_medications),
-        "medications": found_medications,
-    }
+    source = "NovaVision OCR Text Detection simülasyon çıktısı"
+    final_ocr_text = ocr_text
+
+    if not final_ocr_text and image_base64:
+        novavision_text = call_novavision_ocr(
+            image_base64=image_base64,
+            filename=image.filename if image else None,
+            content_type=image.content_type if image else None,
+        )
+        if novavision_text:
+            final_ocr_text = novavision_text
+            source = "NovaVision OCR Text Detection API çıktısı"
+
+    if not final_ocr_text:
+        final_ocr_text = demo["ocr_text"]
+
+    return build_prescription_summary(
+        patient_id=patient_id,
+        ocr_text=final_ocr_text,
+        source=source,
+        image_meta=image_meta,
+    )
 
 
 @app.post("/analyze-drug-risk")

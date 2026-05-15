@@ -1190,17 +1190,25 @@
       ];
       renderScanOutput();
       updateMetrics();
-      scanPrescription();
+      scanPrescription("imageInput");
       document.querySelector("#medicine-guide").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
-    async function scanPrescription() {
+    async function scanPrescription(inputId = "prescriptionImageInput") {
       resetPrescriptionScan("NovaVision OCR sonucu bekleniyor...");
+      const formData = new FormData();
+      const fileInput = document.getElementById(inputId);
+      const selectedFile = fileInput && fileInput.files && fileInput.files[0];
+
+      formData.append("patient_id", selectedPatient.id);
+      if (selectedFile) {
+        formData.append("image", selectedFile);
+      }
+
       try {
         const response = await fetch("http://127.0.0.1:8000/prescription-scan", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ patient_id: selectedPatient.id, image: "uploaded_prescription_demo.jpg" })
+          body: formData
         });
 
         if (!response.ok) {
@@ -1213,7 +1221,7 @@
         renderPrescriptionScan({
           ...prescriptionScanDemo,
           patient_id: selectedPatient.id,
-          source: "Backend kapalı olduğu için frontend simülasyon çıktısı"
+          source: "Backend veya NovaVision API kapalı olduğu için frontend simülasyon çıktısı"
         });
       }
     }
