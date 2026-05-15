@@ -1,229 +1,146 @@
 from __future__ import annotations
 
-import json
-from itertools import combinations
-from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
-
-ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
+from backend.database import (
+    get_all_doctors,
+    get_all_patients,
+    get_patient,
+    get_patient_medicines,
+    init_db,
+    save_doctor_decision,
+)
+from backend.services.puq_ai_service import (
+    call_puq_webhook,
+    get_fallback_puq_response,
+    prepare_puq_payload,
+)
 
 
 app = FastAPI(
     title="OncoSafe Vision AI API",
-    description="Hackathon MVP için sentetik veri kullanan klinik karar destek API'si.",
-    version="0.1.0",
+    description="Clinical decision support hackathon MVP using synthetic data, SQLite, and Puq.ai webhook integration.",
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
-class ScanMedicationRequest(BaseModel):
-    patient_id: str = "P001"
-    image: str | None = None
+class NewMedicine(BaseModel):
+    medicine_name: str = Field(..., min_length=1)
+    dosage: str = Field(..., min_length=1)
+    frequency: str = Field(..., min_length=1)
 
 
-class AnalyzeDrugRiskRequest(BaseModel):
-    patient_id: str
-    medications: list[str]
-
-
-class PredictChemoRiskRequest(BaseModel):
-    patient_id: str
-    age: int | None = None
-    tumor_size: float | None = None
-    grade: int | None = None
-    node_status: int | None = None
-    er: int | None = None
-    pr: int | None = None
-    her2: int | None = None
-    ki67: int | None = None
-    synthetic_gene_score: int | None = None
+class AnalyzeNewMedicineRequest(BaseModel):
+    patient_id: int
+    new_medicine: NewMedicine
 
 
 class DoctorDecisionRequest(BaseModel):
-    patient_id: str
-    decision: Literal["approve", "reject", "modify_alternative", "request_further_test"]
-    note: str | None = None
+    doctor_id: int
+    patient_id: int
+    new_medicine: str
+    risk_score: int
+    risk_level: Literal["Low", "Medium", "High"]
+    decision: Literal["approve", "reject", "modify", "request_further_test"]
 
 
-def load_json(name: str):
-    with (DATA_DIR / name).open(encoding="utf-8") as file:
-        return json.load(file)
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
 
 
-def patients():
-    return load_json("patients.json")
+@app.get("/health")
+def health() -> dict:
+    return {
+        "status": "ok",
+        "app": "OncoSafe Vision AI",
+        "safety_note": "Clinical decision support only. Doctor review is required.",
+    }
 
 
-def interactions():
-    return load_json("drug_interactions.json")
-
-
-def find_patient(patient_id: str):
-    patient = next((item for item in patients() if item["patient_id"] == patient_id), None)
-    if not patient:
-        raise HTTPException(status_code=404, detail="Hasta bulunamadı")
-    return patient
-
-
-def patient_factor_score(patient: dict) -> tuple[int, list[str]]:
-    score = 0
-    factors: list[str] = []
-
-    if patient["age"] > 65:
-        score += 10
-        factors.append("Yaş > 65")
-    if patient["creatinine"] >= 1.4:
-        score += 8
-        factors.append("Böbrek fonksiyonunda risk göstergesi")
-    if patient["alt"] > 50 or patient["ast"] > 50:
-        score += 7
-        factors.append("Karaciğer enzimlerinde yükselme")
-    if patient["hemoglobin"] < 11:
-        score += 10
-        factors.append("Düşük hemoglobin")
-    if "Breast Cancer" in patient["diagnoses"] or "Meme Kanseri" in patient["diagnoses"]:
-        score += 5
-        factors.append("Kanser hastası faktörü")
-    if patient["allergies"] != ["None"] and patient["allergies"] != ["Yok"]:
-        score += 5
-        factors.append("Bilinen alerji öyküsü")
-
-    return score, factors
-
-
-def match_interaction(drug_a: str, drug_b: str):
-    for rule in interactions():
-        if {rule["drug_a"], rule["drug_b"]} == {drug_a, drug_b}:
-            return rule
-    return None
+@app.get("/doctors")
+def doctors() -> list[dict]:
+    return get_all_doctors()
 
 
 @app.get("/patients")
-def list_patients():
-    return patients()
+def patients() -> list[dict]:
+    return get_all_patients()
 
 
 @app.get("/patients/{patient_id}")
-def get_patient(patient_id: str):
-    return find_patient(patient_id)
+def patient_detail(patient_id: int) -> dict:
+    patient = get_patient(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    patient["current_medications"] = get_patient_medicines(patient_id)
+    patient["synthetic_data"] = True
+    return patient
 
 
-@app.post("/scan-medications")
-def scan_medications(payload: ScanMedicationRequest):
-    mock_outputs = {
-        "P001": [
-            {"name": "Warfarin", "confidence": 0.94},
-            {"name": "Ibuprofen", "confidence": 0.91},
-            {"name": "Lisinopril", "confidence": 0.88},
-        ],
-        "P002": [
-            {"name": "Metformin", "confidence": 0.93},
-            {"name": "Aspirin", "confidence": 0.90},
-        ],
-        "P003": [
-            {"name": "Warfarin", "confidence": 0.95},
-            {"name": "Aspirin", "confidence": 0.92},
-            {"name": "Spironolactone", "confidence": 0.89},
-            {"name": "Lisinopril", "confidence": 0.86},
-        ],
-    }
-
-    return {
-        "source": "NovaVision simülasyon çıktısı",
-        "image": payload.image,
-        "detected_medications": mock_outputs.get(payload.patient_id, []),
-    }
+@app.get("/patients/{patient_id}/medicines")
+def patient_medicines(patient_id: int) -> list[dict]:
+    if not get_patient(patient_id):
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return get_patient_medicines(patient_id)
 
 
-@app.post("/analyze-drug-risk")
-def analyze_drug_risk(payload: AnalyzeDrugRiskRequest):
-    patient = find_patient(payload.patient_id)
-    extra_score, factors = patient_factor_score(patient)
-    found = []
+@app.post("/analyze-new-medicine")
+async def analyze_new_medicine(payload: AnalyzeNewMedicineRequest) -> dict:
+    patient = get_patient(payload.patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
 
-    for drug_a, drug_b in combinations(payload.medications, 2):
-        rule = match_interaction(drug_a, drug_b)
-        if not rule:
-            continue
+    current_medications = get_patient_medicines(payload.patient_id)
+    new_medicine = payload.new_medicine.model_dump()
+    puq_payload = prepare_puq_payload(patient, current_medications, new_medicine)
 
-        score = min(100, rule["base_score"] + extra_score)
-        level = "Yüksek" if score >= 70 else "Orta" if score >= 40 else "Düşük"
-        found.append(
-            {
-                "drug_pair": f"{drug_a} + {drug_b}",
-                "risk_score": score,
-                "risk_level": level,
-                "possible_side_effect": rule["side_effect"],
-                "reason": f"{rule['reason']} Hastaya özel faktörler: {', '.join(factors) or 'Belirgin ek faktör yok'}.",
-                "alternative": rule["alternative"],
-                "doctor_review_required": True,
-            }
+    try:
+        result = await call_puq_webhook(puq_payload)
+    except Exception:
+        result = get_fallback_puq_response(
+            payload.patient_id,
+            new_medicine,
+            patient_data=patient,
+            current_medications=current_medications,
         )
 
-    overall_score = max([item["risk_score"] for item in found], default=18)
-    overall_risk = "Yüksek" if overall_score >= 70 else "Orta" if overall_score >= 40 else "Düşük"
-
-    return {
-        "patient_id": payload.patient_id,
-        "overall_risk": overall_risk,
-        "risk_score": overall_score,
-        "interactions": found,
-    }
-
-
-@app.post("/predict-chemo-risk")
-def predict_chemo_risk(payload: PredictChemoRiskRequest):
-    patient = find_patient(payload.patient_id)
-    features = patient | payload.model_dump(exclude_none=True)
-
-    score = 0
-    reasons: list[str] = []
-    score += min(25, features["tumor_size"] * 7)
-    score += features["grade"] * 10
-    score += 18 if features["node_status"] else 0
-    score += 16 if features["ki67"] >= 30 else 9 if features["ki67"] >= 15 else 2
-    score += round(features["synthetic_gene_score"] * 0.32)
-    score += 5 if features["pr"] == 0 else 0
-    score -= 3 if features["age"] > 70 else 0
-    final_score = max(5, min(96, round(score)))
-
-    if features["grade"] >= 3:
-        reasons.append("Yüksek tümör derecesi")
-    if features["ki67"] >= 30:
-        reasons.append("Yüksek Ki-67 değeri")
-    if features["node_status"]:
-        reasons.append("Pozitif lenf nodu tutulumu")
-    if features["synthetic_gene_score"] >= 60:
-        reasons.append("Yüksek sentetik genomik risk skoru")
-    if features["tumor_size"] >= 2.5:
-        reasons.append("Daha büyük tümör boyutu")
-    if not reasons:
-        reasons.append("Daha düşük derece, küçük tümör boyutu ve düşük sentetik genomik risk skoru")
-
-    beneficial = final_score >= 55
-    confidence = min(0.92, 0.68 + final_score / 400) if beneficial else max(0.66, 0.9 - final_score / 300)
-
-    return {
-        "patient_id": payload.patient_id,
-        "cancer_therapy_risk_score": final_score,
-        "prediction": "Kemoterapi faydalı olabilir" if beneficial else "Kemoterapi gerekli olmayabilir",
-        "confidence": round(confidence, 2),
-        "explanation": reasons,
-        "doctor_review_required": True,
-        "safety_note": "Bu çıktı Oncotype DX, genetik test veya klinik karar verme sürecinin yerine geçmez.",
-    }
+    result["doctor_review_required"] = result.get("overall_risk_level") in {"Medium", "High"} or any(
+        item.get("doctor_review_required") for item in result.get("detected_interactions", [])
+    )
+    result["clinical_decision_support_only"] = True
+    return result
 
 
 @app.post("/doctor-decision")
-def doctor_decision(payload: DoctorDecisionRequest):
-    find_patient(payload.patient_id)
+def doctor_decision(payload: DoctorDecisionRequest) -> dict:
+    if not get_patient(payload.patient_id):
+        raise HTTPException(status_code=404, detail="Patient not found")
+    if payload.doctor_id not in {doctor["id"] for doctor in get_all_doctors()}:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    saved = save_doctor_decision(
+        doctor_id=payload.doctor_id,
+        patient_id=payload.patient_id,
+        new_medicine=payload.new_medicine,
+        risk_score=payload.risk_score,
+        risk_level=payload.risk_level,
+        decision=payload.decision,
+    )
     return {
-        "patient_id": payload.patient_id,
-        "decision": payload.decision,
-        "note": payload.note,
-        "status": "Doktor kontrollü iş akışı için kaydedildi",
+        "status": "saved",
+        "decision": saved,
+        "safety_note": "Decision recorded for doctor-controlled workflow. The system did not make a final medical decision.",
     }

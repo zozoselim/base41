@@ -1,60 +1,96 @@
 # OncoSafe Vision AI
 
-OncoSafe Vision AI, kanser hastaları ve çoklu ilaç kullanan bireyler için hazırlanmış hackathon MVP prototipidir. Sistem şunları birleştirir:
+OncoSafe Vision AI is a healthcare hackathon MVP for doctors. It is a clinical decision support prototype that helps review the risk of adding a new medicine for a synthetic patient already using multiple medicines.
 
-- NovaVision tarzı görsel ilaç tanıma
-- Açıklanabilir ilaç etkileşim risk skoru
-- Onkoloji tedavisi için ön risk tahmini
-- Doktor onay akışı
-- Yalnızca sentetik veri kullanımı
+Important safety rules:
 
-Bu prototip tanı koymaz, Oncotype DX yerine geçmez ve tıbbi karar vermez. Her öneri doktor değerlendirmesi gerektirir.
+- The system never makes final medical decisions.
+- The system never tells a patient to start, stop, or change medicine.
+- All results are shown as clinical decision support only.
+- Medium and High risk require doctor review.
+- All seeded data is synthetic.
 
-## Hızlı Demo
+## Stack
 
-`index.html` dosyasını tarayıcıda açın.
+- Frontend: React + Vite
+- Backend: FastAPI
+- Database: SQLite
+- AI integration: Puq.ai webhook/API with safe fallback response
 
-Önerilen demo akışı:
+## Run Locally
 
-1. `Ayse Demir - P001` hastasını seçin.
-2. `NovaVision ile Tara` butonuna basın.
-3. `İlaç Riskini Analiz Et` butonuna basın.
-4. `Tahmin Et` butonuna basın.
-5. Doktor onay panelini kullanın.
-
-Tek tıklamalı `Tüm MVP Akışını Çalıştır` butonu jüri demosunu otomatik çalıştırır.
-
-## Backend İskeleti
-
-FastAPI backend dosyası `backend/main.py` içindedir.
-
-Bağımlılıkları kurmak için:
+Backend:
 
 ```bash
-pip install -r requirements.txt
+py -3 -m pip install -r requirements.txt
+py -3 -m uvicorn backend.main:app --reload
 ```
 
-Backend'i çalıştırmak için:
+Frontend:
 
 ```bash
-uvicorn backend.main:app --reload
+corepack pnpm install
+corepack pnpm dev
 ```
 
-Endpointler:
+Open:
 
+```text
+http://127.0.0.1:5173
+```
+
+API docs:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+## Puq.ai Configuration
+
+Create or edit `.env`:
+
+```env
+PUQ_WEBHOOK_URL=your_puq_ai_webhook_url
+PUQ_API_KEY=your_puq_ai_api_key
+```
+
+The backend sends this header to Puq.ai:
+
+```json
+{
+  "Content-Type": "application/json",
+  "Authorization": "Token YOUR_PUQ_API_KEY"
+}
+```
+
+If Puq.ai is unavailable or not configured, `/analyze-new-medicine` returns a fallback JSON response with:
+
+```json
+{
+  "is_fallback": true,
+  "warning": "Puq.ai service is currently unavailable. Showing fallback demo result."
+}
+```
+
+## Main Flow
+
+Doctor login
+-> Select patient
+-> View patient profile and current medicines
+-> Enter new medicine
+-> FastAPI `/analyze-new-medicine`
+-> SQLite lookup
+-> Puq.ai webhook or fallback
+-> Frontend risk result display
+-> Doctor decision saved through `/doctor-decision`
+
+## API Endpoints
+
+- `GET /doctors`
 - `GET /patients`
 - `GET /patients/{patient_id}`
-- `POST /scan-medications`
-- `POST /analyze-drug-risk`
-- `POST /predict-chemo-risk`
+- `GET /patients/{patient_id}/medicines`
+- `POST /analyze-new-medicine`
 - `POST /doctor-decision`
 
-## Veri
-
-Sentetik veri dosyaları `data/` klasöründedir:
-
-- `patients.json`
-- `drug_interactions.json`
-- `oncology_risk.json`
-
-Gerçek e-Nabız verisi veya gerçek hasta verisi kullanılmaz.
+The SQLite database is created automatically as `oncosafe.sqlite3` on backend startup and seeded with 5 doctors, 50 synthetic patients, and 2 to 6 medicines per patient.
