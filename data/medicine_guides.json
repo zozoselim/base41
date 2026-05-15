@@ -1,0 +1,104 @@
+{
+  "Warfarin": {
+    "generic_name": "Warfarin",
+    "active_ingredient": "Warfarin sodyum",
+    "category": "Antikoagülan",
+    "purpose": "Kan pıhtısı oluşum riskini azaltmaya yardımcı olur.",
+    "dose": "Doktorun belirlediği dozda",
+    "time": "Her gün aynı saatte, tercihen akşam",
+    "weekly_days": "Haftada 7 gün veya doktor planına göre",
+    "food_note": "K vitamini içeren besinlerde ani artış/azalma yapılmamalıdır.",
+    "warnings": [
+      "Kanama, morarma veya siyah dışkı olursa doktora başvurulmalıdır.",
+      "Aspirin ve ibuprofen gibi ilaçlarla birlikte kullanım doktor onayı gerektirir.",
+      "INR takibi aksatılmamalıdır."
+    ],
+    "ingredients": ["Warfarin sodyum", "Yardımcı tablet bileşenleri"],
+    "storage": "Oda sıcaklığında, nemden ve çocuklardan uzak saklanmalıdır."
+  },
+  "Ibuprofen": {
+    "generic_name": "Ibuprofen",
+    "active_ingredient": "Ibuprofen",
+    "category": "Ağrı kesici / antiinflamatuvar",
+    "purpose": "Ağrı, ateş ve inflamasyon şikayetlerini azaltmaya yardımcı olur.",
+    "dose": "Doktorun önerdiği dozda",
+    "time": "Tok karnına alınması tercih edilir",
+    "weekly_days": "Gerektiğinde; uzun süreli kullanım için doktor onayı gerekir",
+    "food_note": "Mide rahatsızlığı riskini azaltmak için yemekle birlikte alınabilir.",
+    "warnings": [
+      "Mide kanaması, böbrek yükü ve tansiyon dengesizliği riski oluşturabilir.",
+      "Warfarin veya aspirin kullanan hastalarda doktor onayı olmadan kullanılmamalıdır.",
+      "Kanser tedavisi alan hastalarda ek değerlendirme gerekir."
+    ],
+    "ingredients": ["Ibuprofen", "Yardımcı tablet/kapsül bileşenleri"],
+    "storage": "Oda sıcaklığında, kuru yerde saklanmalıdır."
+  },
+  "Lisinopril": {
+    "generic_name": "Lisinopril",
+    "active_ingredient": "Lisinopril",
+    "category": "ACE inhibitörü",
+    "purpose": "Hipertansiyon ve kalp-damar risk yönetiminde kullanılır.",
+    "dose": "Doktorun belirlediği günlük dozda",
+    "time": "Her gün aynı saatte",
+    "weekly_days": "Genellikle haftada 7 gün",
+    "food_note": "Potasyum takviyesi veya potasyumdan zengin diyet doktorla değerlendirilmelidir.",
+    "warnings": [
+      "Baş dönmesi, öksürük veya yüz/dudak şişmesi olursa tıbbi destek alınmalıdır.",
+      "Spironolactone ile birlikte potasyum yükselmesi riski artabilir.",
+      "Böbrek fonksiyonu ve potasyum düzeyi takip edilmelidir."
+    ],
+    "ingredients": ["Lisinopril", "Yardımcı tablet bileşenleri"],
+    "storage": "Oda sıcaklığında ve ambalajında saklanmalıdır."
+  },
+  "Aspirin": {
+    "generic_name": "Aspirin",
+    "active_ingredient": "Asetilsalisilik asit",
+    "category": "Antiplatelet / ağrı kesici",
+    "purpose": "Pıhtılaşma riskini azaltma veya ağrı/ateş kontrolü amacıyla kullanılabilir.",
+    "dose": "Endikasyona göre doktorun belirlediği dozda",
+    "time": "Genellikle tok karnına",
+    "weekly_days": "Doktor planına göre",
+    "food_note": "Mide hassasiyeti varsa yemekle birlikte alınması gerekebilir.",
+    "warnings": [
+      "Kanama riskini artırabilir.",
+      "Warfarin veya ibuprofen ile birlikte kullanım doktor değerlendirmesi gerektirir.",
+      "Alerji veya mide ülseri öyküsü varsa dikkat edilmelidir."
+    ],
+    "ingredients": ["Asetilsalisilik asit", "Yardımcı tablet bileşenleri"],
+    "storage": "Kuru ve serin yerde saklanmalıdır."
+  },
+  "Metformin": {
+    "generic_name": "Metformin",
+    "active_ingredient": "Metformin hidroklorür",
+    "category": "Antidiyabetik",
+    "purpose": "Kan şekeri kontrolünü destekler.",
+    "dose": "Doktorun belirlediği dozda",
+    "time": "Genellikle yemekle birlikte",
+    "weekly_days": "Genellikle haftada 7 gün",
+    "food_note": "Mide yan etkilerini azaltmak için öğünle birlikte alınabilir.",
+    "warnings": [
+      "Böbrek fonksiyonu bozuksa doktor değerlendirmesi gerekir.",
+      "Kontrast madde kullanılacak işlemlerden önce geçici durdurma gerekebilir.",
+      "Şiddetli halsizlik veya nefes darlığında tıbbi yardım alınmalıdır."
+    ],
+    "ingredients": ["Metformin hidroklorür", "Yardımcı tablet bileşenleri"],
+    "storage": "Oda sıcaklığında saklanmalıdır."
+  },
+  "Spironolactone": {
+    "generic_name": "Spironolactone",
+    "active_ingredient": "Spironolakton",
+    "category": "Potasyum tutucu diüretik",
+    "purpose": "Sıvı dengesi, tansiyon ve bazı kalp-damar durumlarında kullanılır.",
+    "dose": "Doktorun belirlediği dozda",
+    "time": "Genellikle sabah veya doktorun önerdiği saatte",
+    "weekly_days": "Doktor planına göre",
+    "food_note": "Potasyum içeriği yüksek besinler ve takviyeler doktorla değerlendirilmelidir.",
+    "warnings": [
+      "Potasyum yükselmesi riski vardır.",
+      "Lisinopril ile birlikte kullanımda yakın takip gerekir.",
+      "Kas güçsüzlüğü veya ritim bozukluğu hissinde doktora başvurulmalıdır."
+    ],
+    "ingredients": ["Spironolakton", "Yardımcı tablet bileşenleri"],
+    "storage": "Oda sıcaklığında ve çocuklardan uzak saklanmalıdır."
+  }
+}

@@ -25,6 +25,12 @@ class ScanMedicationRequest(BaseModel):
     image: str | None = None
 
 
+class ScanMedicineGuideRequest(BaseModel):
+    patient_id: str = "P001"
+    image: str | None = None
+    detected_name: str | None = None
+
+
 class AnalyzeDrugRiskRequest(BaseModel):
     patient_id: str
     medications: list[str]
@@ -60,6 +66,10 @@ def patients():
 
 def interactions():
     return load_json("drug_interactions.json")
+
+
+def medicine_guides():
+    return load_json("medicine_guides.json")
 
 
 def find_patient(patient_id: str):
@@ -136,6 +146,28 @@ def scan_medications(payload: ScanMedicationRequest):
         "source": "NovaVision simülasyon çıktısı",
         "image": payload.image,
         "detected_medications": mock_outputs.get(payload.patient_id, []),
+    }
+
+
+@app.post("/scan-medicine-guide")
+def scan_medicine_guide(payload: ScanMedicineGuideRequest):
+    patient = find_patient(payload.patient_id)
+    detected_name = payload.detected_name or patient["current_drugs"][0]
+    guide = medicine_guides().get(detected_name)
+
+    if not guide:
+        raise HTTPException(status_code=404, detail="İlaç rehberi bulunamadı")
+
+    return {
+        "source": "NovaVision object detection simülasyon çıktısı",
+        "image": payload.image,
+        "detected_medication": {
+            "name": detected_name,
+            "confidence": 0.96,
+            "bbox": {"x": 128, "y": 84, "width": 420, "height": 260},
+        },
+        "prescription_summary": guide,
+        "safety_note": "Bu bilgi reçete veya doktor/eczacı danışmanlığının yerine geçmez.",
     }
 
 

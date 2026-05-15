@@ -361,6 +361,85 @@
       line-height: 1.45;
     }
 
+    .guide-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.15fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .medicine-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fbfd;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .medicine-card h5 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .schedule-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .schedule-box {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 86px;
+    }
+
+    .schedule-box span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .schedule-box strong {
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    .integration-steps {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: step;
+    }
+
+    .integration-steps li {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 10px;
+      align-items: start;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .integration-steps li::before {
+      content: counter(step);
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--teal-soft);
+      color: var(--teal);
+      font-weight: 900;
+    }
+
     .scanner {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -493,7 +572,7 @@
         position: relative;
         height: auto;
       }
-      .hero-grid, .scanner { grid-template-columns: 1fr; }
+      .hero-grid, .scanner, .guide-grid { grid-template-columns: 1fr; }
       .span-3, .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
     }
 
@@ -501,7 +580,7 @@
       .hero, .content { padding-left: 18px; padding-right: 18px; }
       .toolbar { flex-direction: column; align-items: stretch; }
       .select { min-width: 0; width: 100%; }
-      .quick-metrics, .decision-actions, .score-wrap { grid-template-columns: 1fr; }
+      .quick-metrics, .decision-actions, .score-wrap, .schedule-grid { grid-template-columns: 1fr; }
       .score-ring { margin: 0 auto; }
       table, thead, tbody, th, td, tr { display: block; }
       thead { display: none; }
@@ -538,6 +617,7 @@
       <nav class="nav" aria-label="Ana gezinme">
         <a class="active" href="#dashboard">Hasta Paneli</a>
         <a href="#scanner">NovaVision Tarayıcı</a>
+        <a href="#medicine-guide">Hasta İlaç Rehberi</a>
         <a href="#drug-risk">İlaç Riski</a>
         <a href="#oncology">Onkoloji Tahmini</a>
         <a href="#doctor">Doktor Onayı</a>
@@ -663,6 +743,59 @@
                 </div>
               </div>
             </div>
+          </article>
+
+          <article class="panel span-12" id="medicine-guide">
+            <div class="panel-title">
+              <div>
+                <h4>Hasta İlaç Rehberi</h4>
+                <p>Hasta tek bir ilaç fotoğrafı yükler; NovaVision ilacı tanır ve sistem reçete özeti gibi anlaşılır kullanım bilgisi gösterir.</p>
+              </div>
+              <span class="pill info">Yan özellik</span>
+            </div>
+
+            <div class="guide-grid">
+              <div class="dropzone">
+                <div>
+                  <strong>Tek ilaç kutusu fotoğrafı yükleyin</strong>
+                  <p class="footer-note">Demo için seçili hastanın ilaçlarından biri simüle edilir. Gerçek entegrasyonda NovaVision object detection çıktısı backend'e gönderilir.</p>
+                  <input type="file" id="guideImageInput" accept="image/*">
+                  <div style="margin-top:14px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                    <button class="btn light" onclick="scanPatientMedicine()">İlacı Tanı</button>
+                    <a class="btn" href="https://suite.novavision.ai/" target="_blank" rel="noreferrer">NovaVision Panelini Aç</a>
+                  </div>
+                </div>
+              </div>
+
+              <div class="medicine-card" id="medicineGuideCard">
+                <div class="panel-title">
+                  <div>
+                    <h4>Reçete Özeti</h4>
+                    <p>İlaç tanındığında kullanım talimatları burada görünür.</p>
+                  </div>
+                  <span class="pill medium">Bekliyor</span>
+                </div>
+                <ul class="explain-list">
+                  <li>İlaç fotoğrafı yüklendikten sonra etkin madde, kullanım zamanı, haftalık kullanım günleri, uyarılar ve saklama bilgisi gösterilir.</li>
+                </ul>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel span-12">
+            <div class="panel-title">
+              <div>
+                <h4>NovaVision Bağlantı Planı</h4>
+                <p>Jüriye NovaVision'ın projede neden ve nasıl kullanılacağını net göstermek için.</p>
+              </div>
+              <span class="pill info">60 puanlık katman</span>
+            </div>
+            <ul class="integration-steps">
+              <li><strong>Model:</strong> NovaVision Suite içinde Object Detection veya Classification akışı oluşturulur; sınıflar ilaç kutusu/etiket/reçete alanı olarak tanımlanır.</li>
+              <li><strong>Çıktı:</strong> NovaVision'ın ürettiği ilaç adı, confidence skoru ve gerekiyorsa bounding box bilgisi JSON olarak alınır.</li>
+              <li><strong>Ara katman:</strong> Bizim backend'deki <code>/scan-medications</code> ve <code>/scan-medicine-guide</code> endpointleri bu JSON'u karşılar.</li>
+              <li><strong>Demo güvenliği:</strong> API anahtarı ve gerçek panel erişimi hazır değilse simülasyon JSON'u kullanılır; mimari yine NovaVision entegrasyonuna uygun anlatılır.</li>
+            </ul>
           </article>
 
           <article class="panel span-12" id="drug-risk">
@@ -855,6 +988,87 @@
       ]
     };
 
+    const medicineGuides = {
+      Warfarin: {
+        genericName: "Warfarin",
+        activeIngredient: "Warfarin sodyum",
+        category: "Antikoagülan",
+        purpose: "Kan pıhtısı oluşum riskini azaltmaya yardımcı olur.",
+        dose: "Doktorun belirlediği dozda",
+        time: "Her gün aynı saatte, tercihen akşam",
+        weeklyDays: "Haftada 7 gün veya doktor planına göre",
+        foodNote: "K vitamini içeren besinlerde ani artış/azalma yapılmamalıdır.",
+        warnings: ["Kanama, morarma veya siyah dışkı olursa doktora başvurulmalıdır.", "Aspirin ve ibuprofen gibi ilaçlarla birlikte kullanım doktor onayı gerektirir.", "INR takibi aksatılmamalıdır."],
+        ingredients: ["Warfarin sodyum", "Yardımcı tablet bileşenleri"],
+        storage: "Oda sıcaklığında, nemden ve çocuklardan uzak saklanmalıdır."
+      },
+      Ibuprofen: {
+        genericName: "Ibuprofen",
+        activeIngredient: "Ibuprofen",
+        category: "Ağrı kesici / antiinflamatuvar",
+        purpose: "Ağrı, ateş ve inflamasyon şikayetlerini azaltmaya yardımcı olur.",
+        dose: "Doktorun önerdiği dozda",
+        time: "Tok karnına alınması tercih edilir",
+        weeklyDays: "Gerektiğinde; uzun süreli kullanım için doktor onayı gerekir",
+        foodNote: "Mide rahatsızlığı riskini azaltmak için yemekle birlikte alınabilir.",
+        warnings: ["Mide kanaması, böbrek yükü ve tansiyon dengesizliği riski oluşturabilir.", "Warfarin veya aspirin kullanan hastalarda doktor onayı olmadan kullanılmamalıdır.", "Kanser tedavisi alan hastalarda ek değerlendirme gerekir."],
+        ingredients: ["Ibuprofen", "Yardımcı tablet/kapsül bileşenleri"],
+        storage: "Oda sıcaklığında, kuru yerde saklanmalıdır."
+      },
+      Lisinopril: {
+        genericName: "Lisinopril",
+        activeIngredient: "Lisinopril",
+        category: "ACE inhibitörü",
+        purpose: "Hipertansiyon ve kalp-damar risk yönetiminde kullanılır.",
+        dose: "Doktorun belirlediği günlük dozda",
+        time: "Her gün aynı saatte",
+        weeklyDays: "Genellikle haftada 7 gün",
+        foodNote: "Potasyum takviyesi veya potasyumdan zengin diyet doktorla değerlendirilmelidir.",
+        warnings: ["Baş dönmesi, öksürük veya yüz/dudak şişmesi olursa tıbbi destek alınmalıdır.", "Spironolactone ile birlikte potasyum yükselmesi riski artabilir.", "Böbrek fonksiyonu ve potasyum düzeyi takip edilmelidir."],
+        ingredients: ["Lisinopril", "Yardımcı tablet bileşenleri"],
+        storage: "Oda sıcaklığında ve ambalajında saklanmalıdır."
+      },
+      Aspirin: {
+        genericName: "Aspirin",
+        activeIngredient: "Asetilsalisilik asit",
+        category: "Antiplatelet / ağrı kesici",
+        purpose: "Pıhtılaşma riskini azaltma veya ağrı/ateş kontrolü amacıyla kullanılabilir.",
+        dose: "Endikasyona göre doktorun belirlediği dozda",
+        time: "Genellikle tok karnına",
+        weeklyDays: "Doktor planına göre",
+        foodNote: "Mide hassasiyeti varsa yemekle birlikte alınması gerekebilir.",
+        warnings: ["Kanama riskini artırabilir.", "Warfarin veya ibuprofen ile birlikte kullanım doktor değerlendirmesi gerektirir.", "Alerji veya mide ülseri öyküsü varsa dikkat edilmelidir."],
+        ingredients: ["Asetilsalisilik asit", "Yardımcı tablet bileşenleri"],
+        storage: "Kuru ve serin yerde saklanmalıdır."
+      },
+      Metformin: {
+        genericName: "Metformin",
+        activeIngredient: "Metformin hidroklorür",
+        category: "Antidiyabetik",
+        purpose: "Kan şekeri kontrolünü destekler.",
+        dose: "Doktorun belirlediği dozda",
+        time: "Genellikle yemekle birlikte",
+        weeklyDays: "Genellikle haftada 7 gün",
+        foodNote: "Mide yan etkilerini azaltmak için öğünle birlikte alınabilir.",
+        warnings: ["Böbrek fonksiyonu bozuksa doktor değerlendirmesi gerekir.", "Kontrast madde kullanılacak işlemlerden önce geçici durdurma gerekebilir.", "Şiddetli halsizlik veya nefes darlığında tıbbi yardım alınmalıdır."],
+        ingredients: ["Metformin hidroklorür", "Yardımcı tablet bileşenleri"],
+        storage: "Oda sıcaklığında saklanmalıdır."
+      },
+      Spironolactone: {
+        genericName: "Spironolactone",
+        activeIngredient: "Spironolakton",
+        category: "Potasyum tutucu diüretik",
+        purpose: "Sıvı dengesi, tansiyon ve bazı kalp-damar durumlarında kullanılır.",
+        dose: "Doktorun belirlediği dozda",
+        time: "Genellikle sabah veya doktorun önerdiği saatte",
+        weeklyDays: "Doktor planına göre",
+        foodNote: "Potasyum içeriği yüksek besinler ve takviyeler doktorla değerlendirilmelidir.",
+        warnings: ["Potasyum yükselmesi riski vardır.", "Lisinopril ile birlikte kullanımda yakın takip gerekir.", "Kas güçsüzlüğü veya ritim bozukluğu hissinde doktora başvurulmalıdır."],
+        ingredients: ["Spironolakton", "Yardımcı tablet bileşenleri"],
+        storage: "Oda sıcaklığında ve çocuklardan uzak saklanmalıdır."
+      }
+    };
+
     let selectedPatient = patients[0];
     let detectedMedications = [];
     let latestDrugScore = null;
@@ -876,6 +1090,7 @@
       renderPatient();
       renderScanOutput();
       renderEmptyDrugRisk();
+      resetMedicineGuide();
       resetOncology();
       updateMetrics();
       document.getElementById("decisionLog").textContent = "Doktor kararı bekleniyor.";
@@ -925,6 +1140,67 @@
       detectedMedications = novavisionScans[selectedPatient.id] || [];
       renderScanOutput();
       updateMetrics();
+    }
+
+    function scanPatientMedicine() {
+      const candidate = selectedPatient.currentDrugs[0] || "Warfarin";
+      const guide = medicineGuides[candidate] || medicineGuides.Warfarin;
+      renderMedicineGuide(candidate, guide, 0.96);
+    }
+
+    function renderMedicineGuide(name, guide, confidence) {
+      const percent = Math.round(confidence * 100);
+      document.getElementById("medicineGuideCard").innerHTML = `
+        <div class="panel-title">
+          <div>
+            <h4>Reçete Özeti</h4>
+            <p>NovaVision tarafından tanınan ilaç bilgisi.</p>
+          </div>
+          <span class="pill info">Güven: ${percent}%</span>
+        </div>
+        <div>
+          <h5>${name}</h5>
+          <p class="footer-note" style="margin-top:6px;">${guide.purpose}</p>
+        </div>
+        <div class="schedule-grid">
+          <div class="schedule-box"><span>Etkin madde</span><strong>${guide.activeIngredient}</strong></div>
+          <div class="schedule-box"><span>Ne kadar?</span><strong>${guide.dose}</strong></div>
+          <div class="schedule-box"><span>Ne zaman?</span><strong>${guide.time}</strong></div>
+          <div class="schedule-box"><span>Haftada kaç gün?</span><strong>${guide.weeklyDays}</strong></div>
+          <div class="schedule-box"><span>İlaç türü</span><strong>${guide.category}</strong></div>
+          <div class="schedule-box"><span>Saklama</span><strong>${guide.storage}</strong></div>
+        </div>
+        <div class="facts">
+          <div class="fact"><span>Yemekle ilişkisi</span><strong>${guide.foodNote}</strong></div>
+          <div class="fact"><span>İçerik</span><strong>${guide.ingredients.join(", ")}</strong></div>
+        </div>
+        <div>
+          <div class="panel-title" style="margin-bottom:8px;">
+            <div>
+              <h4>Hasta İçin Uyarılar</h4>
+              <p>Bu bölüm reçete yerine geçmez; doktor/eczacı bilgilendirmesini destekler.</p>
+            </div>
+          </div>
+          <ul class="explain-list">
+            ${guide.warnings.map(warning => `<li>${warning}</li>`).join("")}
+          </ul>
+        </div>
+      `;
+    }
+
+    function resetMedicineGuide() {
+      document.getElementById("medicineGuideCard").innerHTML = `
+        <div class="panel-title">
+          <div>
+            <h4>Reçete Özeti</h4>
+            <p>İlaç tanındığında kullanım talimatları burada görünür.</p>
+          </div>
+          <span class="pill medium">Bekliyor</span>
+        </div>
+        <ul class="explain-list">
+          <li>İlaç fotoğrafı yüklendikten sonra etkin madde, kullanım zamanı, haftalık kullanım günleri, uyarılar ve saklama bilgisi gösterilir.</li>
+        </ul>
+      `;
     }
 
     function matchRule(medA, medB) {
@@ -1107,6 +1383,7 @@
       document.getElementById("patientSelect").value = "P001";
       selectPatient("P001");
       scanMedications();
+      scanPatientMedicine();
       analyzeDrugRisk();
       predictChemoRisk();
       doctorDecision("Ek klinik/genetik test istendi");
