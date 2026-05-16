@@ -762,7 +762,7 @@
                   <input type="file" id="prescriptionImageInput" accept="image/*">
                   <div style="margin-top:14px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
                     <button class="btn light" onclick="scanPrescription()">NovaVision Reçeteyi Tara</button>
-                    <a class="btn" href="https://suite.novavision.ai/" target="_blank" rel="noreferrer">NovaVision Reçete Panelini Aç</a>
+                    <a class="btn" href="https://suite.novavision.ai/app/default/flow?id=1319" target="_blank" rel="noreferrer">NovaVision Reçete Panelini Aç</a>
                   </div>
                 </div>
               </div>
@@ -1183,14 +1183,8 @@
       updateMetrics();
     }
 
-    function scanPrescriptionFromScanner() {
-      detectedMedications = [
-        { name: "Parol", confidence: 0.96 },
-        { name: "Augmentin", confidence: 0.93 }
-      ];
-      renderScanOutput();
-      updateMetrics();
-      scanPrescription("imageInput");
+    async function scanPrescriptionFromScanner() {
+      await scanPrescription("imageInput");
       document.querySelector("#medicine-guide").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
@@ -1206,7 +1200,7 @@
       }
 
       try {
-        const response = await fetch("http://127.0.0.1:8000/prescription-scan", {
+        const response = await fetch("http://127.0.0.1:8010/prescription-scan", {
           method: "POST",
           body: formData
         });
@@ -1228,6 +1222,12 @@
 
     function renderPrescriptionScan(result) {
       document.getElementById("ocrTextBox").textContent = result.ocr_text;
+      detectedMedications = result.medications.map(medication => ({
+        name: medication.display_name || medication.name,
+        confidence: 0.95
+      }));
+      renderScanOutput();
+      updateMetrics();
 
       if (!result.medications.length) {
         document.getElementById("prescriptionCards").innerHTML = `

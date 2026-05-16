@@ -1,6 +1,24 @@
 {
-  "Parol": {
-    "display_name": "Parol 500 mg",
+  "Amoksisilin": {
+    "aliases": ["Amoksisilin", "Amoxicillin"],
+    "active_ingredient": "Amoksisilin",
+    "purpose": "Bakteriyel enfeksiyonların tedavisinde kullanılan antibiyotiktir.",
+    "side_effects": [
+      "İshal",
+      "Mide bulantısı",
+      "Alerjik reaksiyon",
+      "Cilt döküntüsü"
+    ],
+    "warnings": [
+      "Antibiyotik tedavisi doktorun belirttiği süre tamamlanmadan kesilmemelidir.",
+      "Penisilin alerjisi olan hastalarda doktor değerlendirmesi gerekir.",
+      "Şiddetli ishal veya alerji belirtisi olursa doktora başvurulmalıdır."
+    ],
+    "alternative": "Penisilin alerjisinde doktor farklı antibiyotik grubu değerlendirebilir.",
+    "doctor_approval": "Gerekli"
+  },
+  "Parasetamol": {
+    "aliases": ["Parasetamol", "Paracetamol", "Parol"],
     "active_ingredient": "Parasetamol",
     "purpose": "Ağrı ve ateş şikayetlerini azaltmak için kullanılır.",
     "side_effects": [
@@ -16,26 +34,8 @@
     "alternative": "Doktor uygun görürse farklı ağrı kesici seçenekler değerlendirilebilir.",
     "doctor_approval": "Gerekli"
   },
-  "Augmentin": {
-    "display_name": "Augmentin 1000 mg",
-    "active_ingredient": "Amoksisilin + Klavulanik asit",
-    "purpose": "Bakteriyel enfeksiyonların tedavisinde kullanılan antibiyotiktir.",
-    "side_effects": [
-      "İshal",
-      "Mide bulantısı",
-      "Alerjik reaksiyon",
-      "Cilt döküntüsü"
-    ],
-    "warnings": [
-      "Antibiyotik tedavisi doktorun belirttiği süre tamamlanmadan kesilmemelidir.",
-      "Penisilin alerjisi olan hastalarda kullanılmamalıdır.",
-      "Şiddetli ishal veya alerji belirtisi olursa doktora başvurulmalıdır."
-    ],
-    "alternative": "Penisilin alerjisinde doktor farklı antibiyotik grubu değerlendirebilir.",
-    "doctor_approval": "Gerekli"
-  },
   "Ibuprofen": {
-    "display_name": "Ibuprofen",
+    "aliases": ["Ibuprofen", "İbuprofen"],
     "active_ingredient": "Ibuprofen",
     "purpose": "Ağrı, ateş ve inflamasyon şikayetlerini azaltmak için kullanılır.",
     "side_effects": [
@@ -49,11 +49,29 @@
       "Böbrek hastalığı veya mide ülseri öyküsü varsa dikkatli olunmalıdır.",
       "Tok karnına alınması mide yan etkilerini azaltabilir."
     ],
-    "alternative": "Paracetamol doktor kontrolünde değerlendirilebilir.",
+    "alternative": "Parasetamol doktor kontrolünde değerlendirilebilir.",
+    "doctor_approval": "Gerekli"
+  },
+  "Lansoprazol": {
+    "aliases": ["Lansoprazol", "Lansoprazole"],
+    "active_ingredient": "Lansoprazol",
+    "purpose": "Mide asidini azaltmak ve reflü/ülser şikayetlerini kontrol etmek için kullanılır.",
+    "side_effects": [
+      "Baş ağrısı",
+      "Karın ağrısı",
+      "Bulantı",
+      "İshal veya kabızlık"
+    ],
+    "warnings": [
+      "Uzun süreli kullanım doktor kontrolünde olmalıdır.",
+      "Diğer ilaçlarla birlikte kullanımda etkileşim açısından değerlendirme gerekir.",
+      "Şikayetler devam ederse doktora başvurulmalıdır."
+    ],
+    "alternative": "Alternatif mide koruyucu seçimi doktor tarafından yapılmalıdır.",
     "doctor_approval": "Gerekli"
   },
   "Warfarin": {
-    "display_name": "Warfarin",
+    "aliases": ["Warfarin"],
     "active_ingredient": "Warfarin sodyum",
     "purpose": "Kan pıhtısı oluşum riskini azaltmak için kullanılan antikoagülandır.",
     "side_effects": [

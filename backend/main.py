@@ -134,25 +134,55 @@ def match_interaction(drug_a: str, drug_b: str):
     return None
 
 
-def extract_usage_instruction(ocr_text: str, medication_name: str) -> dict:
-    pattern = rf"{re.escape(medication_name)}\s*([^.]*)"
+def extract_usage_instruction(ocr_text: str, matched_name: str) -> dict:
+    pattern = rf"{re.escape(matched_name)}\s*([^.]*)"
     match = re.search(pattern, ocr_text, flags=re.IGNORECASE)
-    instruction = match.group(0).strip() if match else medication_name
+    instruction = match.group(0).strip() if match else matched_name
 
     dose_match = re.search(r"(\d+\s*mg)", instruction, flags=re.IGNORECASE)
-    frequency_match = re.search(
-        r"(günde\s+\d+\s+kez|sabah\s+akşam|günde\s+bir\s+kez)",
+    normalized_dose = dose_match.group(1).replace(" ", "") if dose_match else None
+    if normalized_dose:
+        normalized_dose = re.sub(r"(\d+)(mg)", r"\1 mg", normalized_dose, flags=re.IGNORECASE)
+
+    normalized_frequency = re.search(
+        r"(günde\s+\d+\s+kez|gÃ¼nde\s+\d+\s+kez|sabah\s+akşam|sabah\s+akÅŸam|günde\s+bir\s+kez|gÃ¼nde\s+bir\s+kez)",
         instruction,
         flags=re.IGNORECASE,
     )
-    duration_match = re.search(r"(\d+\s+gün)", instruction, flags=re.IGNORECASE)
+    normalized_duration = re.search(r"(\d+\s+gün|\d+\s+gÃ¼n)", instruction, flags=re.IGNORECASE)
+
+    folded_instruction = instruction.lower()
+    for source_char, target_char in (
+        ("\u00fc", "u"),
+        ("\u015f", "s"),
+        ("\u0131", "i"),
+        ("\u0130", "i"),
+        ("\u00e7", "c"),
+        ("\u00f6", "o"),
+        ("\u011f", "g"),
+    ):
+        folded_instruction = folded_instruction.replace(source_char, target_char)
+
+    fallback_frequency = None
+    frequency_count_match = re.search(r"g\S?nde\s+(\d+)\s+kez", folded_instruction)
+    if frequency_count_match:
+        fallback_frequency = f"günde {frequency_count_match.group(1)} kez"
+    elif re.search(r"sabah\s+ak\S?am", folded_instruction):
+        fallback_frequency = "sabah akşam"
+    elif re.search(r"g\S?nde\s+bir\s+kez", folded_instruction):
+        fallback_frequency = "günde bir kez"
+
+    fallback_duration = None
+    fallback_duration_match = re.search(r"(\d+)\s+g\S?n", folded_instruction)
+    if fallback_duration_match:
+        fallback_duration = f"{fallback_duration_match.group(1)} gün"
 
     return {
         "raw_instruction": instruction,
-        "dose": dose_match.group(1) if dose_match else "Reçete metninde belirtilmemiş",
-        "frequency": frequency_match.group(1) if frequency_match else "Reçete metninde belirtilmemiş",
-        "time": "Sabah ve akşam" if "sabah akşam" in instruction.lower() else "Reçete metnine göre",
-        "duration": duration_match.group(1) if duration_match else "Reçete metninde belirtilmemiş",
+        "dose": normalized_dose if normalized_dose else "Reçete metninde belirtilmemiş",
+        "frequency": normalized_frequency.group(1) if normalized_frequency else fallback_frequency or "Reçete metninde belirtilmemiş",
+        "time": "Sabah ve akşam" if "sabah akşam" in instruction.lower() or "sabah akÅŸam" in instruction.lower() else "Reçete metnine göre",
+        "duration": normalized_duration.group(1) if normalized_duration else fallback_duration or "Reçete metninde belirtilmemiş",
     }
 
 
@@ -223,17 +253,65 @@ def call_novavision_ocr(image_base64: str, filename: str | None, content_type: s
     return extract_ocr_text_from_response(response_payload)
 
 
+def fold_for_match(value: str) -> str:
+    folded = value.casefold()
+    for source_char, target_char in (
+        ("\u0131", "i"),
+        ("\u0130", "i"),
+        ("\u00fc", "u"),
+        ("\u00f6", "o"),
+        ("\u00e7", "c"),
+        ("\u015f", "s"),
+        ("\u011f", "g"),
+    ):
+        folded = folded.replace(source_char, target_char)
+    return folded
+
+
+def find_medication_alias(ocr_text: str, medication_name: str, info: dict) -> str | None:
+    candidates = [medication_name, *info.get("aliases", [])]
+    folded_ocr_text = fold_for_match(ocr_text)
+    unique_candidates = []
+    seen = set()
+    for candidate in candidates:
+        if not candidate or candidate.lower() in seen:
+            continue
+        seen.add(candidate.lower())
+        unique_candidates.append(candidate)
+
+    for candidate in unique_candidates:
+        if re.search(rf"(?<!\w){re.escape(candidate)}(?!\w)", ocr_text, flags=re.IGNORECASE):
+            return candidate
+
+    for candidate in unique_candidates:
+        folded_candidate = fold_for_match(candidate)
+        if re.search(rf"(?<!\w){re.escape(folded_candidate)}(?!\w)", folded_ocr_text, flags=re.IGNORECASE):
+            return candidate
+    return None
+
+
+def make_display_name(matched_name: str, usage: dict) -> str:
+    dose = usage.get("dose")
+    if not dose or dose == "Reçete metninde belirtilmemiş":
+        return matched_name
+    if re.search(re.escape(dose), matched_name, flags=re.IGNORECASE):
+        return matched_name
+    return f"{matched_name} {dose}"
+
+
 def build_prescription_summary(patient_id: str, ocr_text: str, source: str, image_meta: dict | None = None) -> dict:
     find_patient(patient_id)
     found_medications = []
 
     for medication_name, info in medication_info().items():
-        if re.search(rf"\b{re.escape(medication_name)}\b", ocr_text, flags=re.IGNORECASE):
-            usage = extract_usage_instruction(ocr_text, medication_name)
+        matched_name = find_medication_alias(ocr_text, medication_name, info)
+        if matched_name:
+            usage = extract_usage_instruction(ocr_text, matched_name)
             found_medications.append(
                 {
                     "name": medication_name,
-                    "display_name": info["display_name"],
+                    "matched_name": matched_name,
+                    "display_name": make_display_name(matched_name, usage),
                     "active_ingredient": info["active_ingredient"],
                     "purpose": info["purpose"],
                     "dose": usage["dose"],
@@ -356,6 +434,9 @@ async def prescription_scan(
         if novavision_text:
             final_ocr_text = novavision_text
             source = "NovaVision OCR Text Detection API çıktısı"
+
+    if not final_ocr_text and os.getenv("NOVAVISION_API_URL"):
+        source = "NovaVision OCR metni alınamadı, demo fallback kullanıldı"
 
     if not final_ocr_text:
         final_ocr_text = demo["ocr_text"]
