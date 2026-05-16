@@ -306,7 +306,7 @@ function PatientProfile({ patient }) {
           <h4>Current medicines</h4>
           <div className="pill-list">
             {patient.current_medications.map((item) => (
-              <span key={item.id}>{item.medicine_name} · {item.dosage} · {item.frequency}</span>
+              <span key={item.id}>{item.medicine_name} - {item.dosage} - {item.frequency}</span>
             ))}
           </div>
         </div>
@@ -365,6 +365,9 @@ function RiskResult({ result, loading }) {
     );
   }
 
+  const requiresReview = ["Medium", "High"].includes(result.overall_risk_level);
+  const alternatives = result.safer_alternatives || [];
+
   return (
     <section className="panel span-2" id="result">
       <div className="panel-heading">
@@ -375,6 +378,18 @@ function RiskResult({ result, loading }) {
         <RiskBadge level={result.overall_risk_level} />
       </div>
       {result.is_fallback && <div className="alert warning"><AlertTriangle size={18} /> {result.warning}</div>}
+      {requiresReview && (
+        <div className={`critical-warning ${result.overall_risk_level.toLowerCase()}`}>
+          <AlertTriangle size={24} />
+          <div>
+            <strong>{result.overall_risk_level} risk detected - doctor review required</strong>
+            <span>
+              {result.high_risk_warning ||
+                "This result must be reviewed by a doctor before any clinical action. Lower-risk alternatives are shown only as decision support options."}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="result-grid">
         <div className={`score-card ${result.overall_risk_level.toLowerCase()}`}>
           <div className="score-ring" style={{ "--score": `${result.overall_risk_score * 3.6}deg` }}>
@@ -391,6 +406,37 @@ function RiskResult({ result, loading }) {
           <Fact label="Safety note" value={result.safety_note} />
         </div>
       </div>
+      {requiresReview && (
+        <div className="alternatives-section">
+          <div className="panel-heading compact-heading">
+            <div>
+              <h3>Lower-risk alternative options</h3>
+              <p>Clinical intent alternatives suggested for doctor review only. The system does not prescribe.</p>
+            </div>
+          </div>
+          {alternatives.length ? (
+            <div className="alternatives-grid">
+              {alternatives.map((item, index) => (
+                <article className="alternative-card" key={`${item.medicine_name}-${index}`}>
+                  <div className="alternative-topline">
+                    <strong>{item.medicine_name}</strong>
+                    <RiskBadge level={item.estimated_risk_level || "Low"} />
+                  </div>
+                  <span className="alternative-score">Estimated risk: {item.estimated_risk_score ?? "--"} / 100</span>
+                  <p>{item.rationale}</p>
+                  <Fact label="Possible same-function use case" value={item.suggested_use_case || "Doctor-selected equivalent clinical intent"} />
+                  <small>{item.safety_note || "For doctor review only. Not a medication instruction."}</small>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="alert warning">
+              <AlertTriangle size={18} />
+              No lower-risk alternative was returned. Request pharmacology/specialist review before deciding.
+            </div>
+          )}
+        </div>
+      )}
       <div className="table-wrap">
         <table>
           <thead>
