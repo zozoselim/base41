@@ -90,6 +90,7 @@ DISEASE_POOLS_BY_DOCTOR = {
 
 
 SQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+SQL_TYPE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\(\d+(?:,\d+)?\))?$")
 
 
 def get_connection() -> sqlite3.Connection:
@@ -146,6 +147,8 @@ def patient_tc_identity(patient_id: int) -> str:
 
 
 def _tc_identity(prefix: str, person_id: int) -> str:
+    if not re.fullmatch(r"\d{8}", prefix):
+        raise ValueError("prefix 8 haneli sayısal bir değer olmalıdır")
     if not 0 <= person_id <= 999:
         raise ValueError("person_id 0 ile 999 arasında olmalıdır")
     return f"{prefix}{person_id:03d}"
@@ -212,14 +215,19 @@ def add_column_if_missing(connection: sqlite3.Connection, table_name: str, colum
         raise ValueError("column_definition '<column_name> <column_type>' formatında olmalıdır")
     column_name, column_type = parts
     _validate_sql_identifier(column_name)
-    _validate_sql_identifier(column_type)
+    _validate_sql_type(column_type)
     if column_name not in table_columns(connection, table_name):
         connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
 
 def _validate_sql_identifier(value: str) -> None:
     if not SQL_IDENTIFIER_RE.fullmatch(value):
-        raise ValueError("Geçersiz SQL tanımlayıcı sağlandı")
+        raise ValueError("Geçersiz SQL tanımlayıcı: yalnızca harf, rakam ve alt çizgi kullanılabilir")
+
+
+def _validate_sql_type(value: str) -> None:
+    if not SQL_TYPE_RE.fullmatch(value):
+        raise ValueError("Geçersiz SQL türü: örnek geçerli formatlar TEXT, INTEGER, VARCHAR(255)")
 
 
 def init_db() -> None:
