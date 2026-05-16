@@ -10,6 +10,8 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 
+from backend.services.medication_catalog import SUPPLEMENTAL_MEDICATIONS
+
 
 WARNING = "Puq.ai service is currently unavailable. Showing fallback demo result."
 ROOT = Path(__file__).resolve().parents[2]
@@ -66,6 +68,9 @@ MEDICATION_CATALOG = {
     "topical nsaid": {"name": "Topical NSAID", "class": "topical_nsaid", "high_daily_mg": None, "max_daily_mg": None},
     "warfarin": {"name": "Warfarin", "class": "anticoagulant", "high_daily_mg": 7.5, "max_daily_mg": 15},
 }
+
+for medication in SUPPLEMENTAL_MEDICATIONS:
+    MEDICATION_CATALOG.setdefault(normalized_name := " ".join(medication["name"].strip().lower().split()), medication)
 
 FREQUENCY_MULTIPLIERS = {
     "once daily": 1,
@@ -182,9 +187,23 @@ def normalize_puq_response(response: Any, payload: dict[str, Any]) -> dict[str, 
             raw_preview=raw_preview,
         )
 
+    original_new_medicine = response.get("new_medicine")
     response = coerce_puq_response_schema(response, payload)
     patient_id = payload["patient_data"]["id"]
     medicine_name = payload["new_medicine"]["medicine_name"]
+
+    stale_medicines = stale_new_medicine_names(response, medicine_name, original_new_medicine)
+    if stale_medicines:
+        response = local_risk_assessment(
+            payload["patient_data"],
+            payload.get("current_medications", []),
+            payload["new_medicine"],
+        )
+        response["puq_error_type"] = "stale_medicine_response"
+        response["puq_error_detail"] = (
+            "Puq.ai returned a result for a different new medicine "
+            f"({', '.join(stale_medicines)}). The app replaced it with the selected medicine context."
+        )
 
     if "overall_risk_score" not in response and response.get("detected_interactions"):
         response["overall_risk_score"] = max(
@@ -196,9 +215,12 @@ def normalize_puq_response(response: Any, payload: dict[str, Any]) -> dict[str, 
             raw_preview=raw_preview,
         )
 
-    response.setdefault("patient_id", patient_id)
-    response.setdefault("new_medicine", medicine_name)
+    response["patient_id"] = patient_id
+    response["new_medicine"] = medicine_name
     response.setdefault("detected_interactions", [])
+    for interaction in response["detected_interactions"]:
+        if isinstance(interaction, dict):
+            interaction["new_medicine"] = medicine_name
     response["overall_risk_score"] = int(response.get("overall_risk_score", 0))
     response.setdefault("overall_risk_level", risk_level_from_score(response["overall_risk_score"]))
     response.setdefault("highest_risk_pair", "No interaction found")
@@ -356,9 +378,44 @@ def coerce_puq_response_schema(response: dict[str, Any], payload: dict[str, Any]
 
     if "patient_specific_risk_factors" in response and "patient_specific_factors" not in response:
         response["patient_specific_factors"] = response["patient_specific_risk_factors"]
-    response.setdefault("patient_id", patient_id)
-    response.setdefault("new_medicine", new_medicine)
+    response["patient_id"] = patient_id
+    response["new_medicine"] = new_medicine
     return response
+
+
+def stale_new_medicine_names(
+    response: dict[str, Any],
+    selected_medicine: str,
+    original_new_medicine: Any,
+) -> list[str]:
+    selected_key = normalize_name(selected_medicine)
+    stale_names: list[str] = []
+
+    for candidate in new_medicine_candidates(response, original_new_medicine):
+        candidate_name = medicine_name_from_value(candidate)
+        if not candidate_name:
+            continue
+        candidate_key = normalize_name(candidate_name)
+        if candidate_key and candidate_key != selected_key and candidate_key in MEDICATION_CATALOG:
+            stale_names.append(MEDICATION_CATALOG[candidate_key]["name"])
+
+    return list(dict.fromkeys(stale_names))
+
+
+def new_medicine_candidates(response: dict[str, Any], original_new_medicine: Any) -> list[Any]:
+    candidates = [original_new_medicine]
+    for interaction in response.get("detected_interactions", []):
+        if isinstance(interaction, dict):
+            candidates.append(interaction.get("new_medicine"))
+    return candidates
+
+
+def medicine_name_from_value(value: Any) -> str:
+    if isinstance(value, dict):
+        value = value.get("medicine_name") or value.get("name")
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def is_async_start_response(value: Any) -> bool:

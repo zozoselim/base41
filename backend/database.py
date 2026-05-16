@@ -293,6 +293,20 @@ def init_db() -> None:
                 risk_score INTEGER NOT NULL,
                 risk_level TEXT NOT NULL,
                 decision TEXT NOT NULL,
+                decision_note TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (doctor_id) REFERENCES doctors (id),
+                FOREIGN KEY (patient_id) REFERENCES patients (id)
+            );
+
+            CREATE TABLE IF NOT EXISTS patient_requested_tests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                doctor_id INTEGER NOT NULL,
+                patient_id INTEGER NOT NULL,
+                test_name TEXT NOT NULL,
+                test_date TEXT NOT NULL,
+                note TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'requested',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (doctor_id) REFERENCES doctors (id),
                 FOREIGN KEY (patient_id) REFERENCES patients (id)
@@ -329,6 +343,7 @@ def migrate_schema(connection: sqlite3.Connection) -> None:
     add_column_if_missing(connection, "patients", "password_salt TEXT")
     add_column_if_missing(connection, "patients", "password_hash TEXT")
     add_column_if_missing(connection, "patients", "created_at TEXT")
+    add_column_if_missing(connection, "doctor_decisions", "decision_note TEXT")
     connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_doctors_tc_identity ON doctors(tc_identity)")
     connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_tc_identity ON patients(tc_identity)")
     connection.execute(
@@ -348,6 +363,22 @@ def migrate_schema(connection: sqlite3.Connection) -> None:
             PRIMARY KEY (patient_id, disease_code),
             FOREIGN KEY (patient_id) REFERENCES patients (id),
             FOREIGN KEY (disease_code) REFERENCES disease_catalog (code)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS patient_requested_tests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doctor_id INTEGER NOT NULL,
+            patient_id INTEGER NOT NULL,
+            test_name TEXT NOT NULL,
+            test_date TEXT NOT NULL,
+            note TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'requested',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (doctor_id) REFERENCES doctors (id),
+            FOREIGN KEY (patient_id) REFERENCES patients (id)
         )
         """
     )
@@ -750,6 +781,7 @@ def authenticate_patient(tc_identity: str, password: str) -> dict | None:
     if patient:
         patient["current_medications"] = get_patient_medicines(patient["id"])
         patient["diagnosis_codes"] = get_patient_diagnosis_codes(patient["id"])
+        patient["requested_tests"] = get_patient_requested_tests(patient["id"])
         patient["synthetic_data"] = True
     return patient
 
@@ -782,6 +814,88 @@ def get_patient_medicines(patient_id: int) -> list[dict]:
             (patient_id,),
         ).fetchall()
         return rows_to_dicts(rows)
+
+
+def get_patient_requested_tests(patient_id: int) -> list[dict]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT ptr.*, d.name AS doctor_name
+            FROM patient_requested_tests ptr
+            JOIN doctors d ON d.id = ptr.doctor_id
+            WHERE ptr.patient_id = ?
+            ORDER BY ptr.test_date DESC, ptr.id DESC
+            """,
+            (patient_id,),
+        ).fetchall()
+        return rows_to_dicts(rows)
+
+
+def add_patient_medicine(patient_id: int, medicine_name: str, dosage: str, frequency: str) -> dict:
+    with get_connection() as connection:
+        existing = connection.execute(
+            """
+            SELECT * FROM patient_medicines
+            WHERE patient_id = ? AND lower(medicine_name) = lower(?)
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (patient_id, medicine_name.strip()),
+        ).fetchone()
+        if existing:
+            connection.execute(
+                """
+                UPDATE patient_medicines
+                SET dosage = ?, frequency = ?
+                WHERE id = ?
+                """,
+                (dosage.strip(), frequency.strip(), existing["id"]),
+            )
+            row = connection.execute(
+                "SELECT id, patient_id, medicine_name, dosage, frequency FROM patient_medicines WHERE id = ?",
+                (existing["id"],),
+            ).fetchone()
+            return dict(row)
+
+        cursor = connection.execute(
+            """
+            INSERT INTO patient_medicines (patient_id, medicine_name, dosage, frequency)
+            VALUES (?, ?, ?, ?)
+            """,
+            (patient_id, medicine_name.strip(), dosage.strip(), frequency.strip()),
+        )
+        row = connection.execute(
+            "SELECT id, patient_id, medicine_name, dosage, frequency FROM patient_medicines WHERE id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
+        return dict(row)
+
+
+def save_patient_requested_test(
+    doctor_id: int,
+    patient_id: int,
+    test_name: str,
+    test_date: str,
+    note: str,
+) -> dict:
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO patient_requested_tests (doctor_id, patient_id, test_name, test_date, note)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (doctor_id, patient_id, test_name.strip(), test_date.strip(), note.strip()),
+        )
+        row = connection.execute(
+            """
+            SELECT ptr.*, d.name AS doctor_name
+            FROM patient_requested_tests ptr
+            JOIN doctors d ON d.id = ptr.doctor_id
+            WHERE ptr.id = ?
+            """,
+            (cursor.lastrowid,),
+        ).fetchone()
+        return dict(row)
 
 
 def create_doctor(
@@ -905,14 +1019,17 @@ def save_doctor_decision(
     risk_score: int,
     risk_level: str,
     decision: str,
+    decision_note: str = "",
 ) -> dict:
     with get_connection() as connection:
         cursor = connection.execute(
             """
-            INSERT INTO doctor_decisions (doctor_id, patient_id, new_medicine, risk_score, risk_level, decision)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO doctor_decisions (
+                doctor_id, patient_id, new_medicine, risk_score, risk_level, decision, decision_note
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (doctor_id, patient_id, new_medicine, risk_score, risk_level, decision),
+            (doctor_id, patient_id, new_medicine, risk_score, risk_level, decision, decision_note.strip()),
         )
         row = connection.execute(
             "SELECT * FROM doctor_decisions WHERE id = ?",

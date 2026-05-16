@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.database import (
+    add_patient_medicine,
     authenticate_doctor,
     authenticate_patient,
     create_doctor,
@@ -18,7 +19,9 @@ from backend.database import (
     get_patient,
     get_patient_diagnosis_codes,
     get_patient_medicines,
+    get_patient_requested_tests,
     init_db,
+    save_patient_requested_test,
     save_doctor_decision,
 )
 from backend.services.puq_ai_service import (
@@ -112,9 +115,15 @@ class DoctorDecisionRequest(BaseModel):
     doctor_id: int
     patient_id: int
     new_medicine: str
+    dosage: str = ""
+    frequency: str = ""
     risk_score: int
     risk_level: Literal["Low", "Medium", "High"]
     decision: Literal["approve", "reject", "modify", "request_further_test"]
+    decision_note: str = ""
+    test_name: str = ""
+    test_date: str = ""
+    test_note: str = ""
 
 
 class PuqRunResultQuery(BaseModel):
@@ -250,6 +259,7 @@ def patient_detail(patient_id: int, doctor_id: int | None = None) -> dict:
         raise HTTPException(status_code=404, detail="Hasta bulunamadı")
     patient["current_medications"] = get_patient_medicines(patient_id)
     patient["diagnosis_codes"] = get_patient_diagnosis_codes(patient_id)
+    patient["requested_tests"] = get_patient_requested_tests(patient_id)
     patient["synthetic_data"] = True
     return patient
 
@@ -259,6 +269,13 @@ def patient_medicines(patient_id: int) -> list[dict]:
     if not get_patient(patient_id):
         raise HTTPException(status_code=404, detail="Hasta bulunamadı")
     return get_patient_medicines(patient_id)
+
+
+@app.get("/patients/{patient_id}/requested-tests")
+def patient_requested_tests(patient_id: int, doctor_id: int | None = None) -> list[dict]:
+    if not get_patient(patient_id, doctor_id=doctor_id):
+        raise HTTPException(status_code=404, detail="Hasta bulunamadÄ±")
+    return get_patient_requested_tests(patient_id)
 
 
 @app.get("/medication-catalog")
@@ -434,6 +451,31 @@ def doctor_decision(payload: DoctorDecisionRequest) -> dict:
     if payload.doctor_id not in {doctor["id"] for doctor in get_all_doctors()}:
         raise HTTPException(status_code=404, detail="Doktor bulunamadı")
 
+    added_medicine = None
+    requested_test = None
+    decision_note = payload.decision_note
+
+    if payload.decision == "approve":
+        added_medicine = add_patient_medicine(
+            payload.patient_id,
+            payload.new_medicine,
+            payload.dosage or "Not specified",
+            payload.frequency or "Not specified",
+        )
+        decision_note = decision_note or "Ilac doktor onayi ile hasta mevcut ilac listesine eklendi."
+
+    if payload.decision == "request_further_test":
+        if not payload.test_name.strip() or not payload.test_date.strip():
+            raise HTTPException(status_code=400, detail="Tetkik adi ve tarihi zorunludur")
+        requested_test = save_patient_requested_test(
+            payload.doctor_id,
+            payload.patient_id,
+            payload.test_name,
+            payload.test_date,
+            payload.test_note or payload.decision_note,
+        )
+        decision_note = decision_note or f"Tetkik istendi: {payload.test_name}"
+
     saved = save_doctor_decision(
         doctor_id=payload.doctor_id,
         patient_id=payload.patient_id,
@@ -441,9 +483,12 @@ def doctor_decision(payload: DoctorDecisionRequest) -> dict:
         risk_score=payload.risk_score,
         risk_level=payload.risk_level,
         decision=payload.decision,
+        decision_note=decision_note,
     )
     return {
         "status": "saved",
         "decision": saved,
+        "added_medicine": added_medicine,
+        "requested_test": requested_test,
         "safety_note": "Karar doktor kontrollü iş akışı için kaydedildi. Sistem nihai tıbbi karar vermez.",
     }
