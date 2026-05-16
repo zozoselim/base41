@@ -186,71 +186,191 @@ def extract_usage_instruction(ocr_text: str, matched_name: str) -> dict:
     }
 
 
-def extract_ocr_text_from_response(payload: dict) -> str | None:
-    direct_text = payload.get("ocr_text") or payload.get("text") or payload.get("recognized_text")
-    if isinstance(direct_text, str) and direct_text.strip():
-        return direct_text.strip()
+OCR_TEXT_KEYS = {
+    "outputContent",
+    "outputText",
+    "text",
+    "recognized_text",
+    "ocr_text",
+    "content",
+    "value",
+}
 
-    for container_key in ("result", "data", "output"):
-        container = payload.get(container_key)
-        if isinstance(container, dict):
-            nested_text = (
-                container.get("ocr_text")
-                or container.get("text")
-                or container.get("recognized_text")
-            )
-            if isinstance(nested_text, str) and nested_text.strip():
-                return nested_text.strip()
 
-    for list_key in ("predictions", "detections", "results"):
-        items = payload.get(list_key)
-        if not isinstance(items, list):
-            continue
+def build_novavision_request_payload(image_base64: str, filename: str | None, content_type: str | None) -> dict:
+    app_id = os.getenv("NOVAVISION_APP_ID", "ocr-text-detection")
+    image_node_id = os.getenv("NOVAVISION_IMAGE_NODE_ID", "ImageLoad")
+    ocr_node_id = os.getenv("NOVAVISION_OCR_NODE_ID", "OCRTextDetection")
+    access_token = os.getenv("NOVAVISION_ACCESS_TOKEN")
+
+    return {
+        "module": "app",
+        "executor": "run",
+        "ws_channel": os.getenv("NOVAVISION_WS_CHANNEL", "onsafe-prescription-ocr"),
+        "access-token": access_token,
+        "app_id": app_id,
+        "service": "ocr_text_detection",
+        "app": {
+            "id": app_id,
+            "nodes": [
+                {
+                    "id": image_node_id,
+                    "name": "Image Load",
+                    "module": "ImageLoad",
+                    "configs": {
+                        "imageFieldType": "base64",
+                        "basedata": image_base64,
+                        "Image Source": {
+                            "type": "base64",
+                            "value": image_base64,
+                            "mimeType": content_type or "image/jpeg",
+                            "filename": filename,
+                        },
+                    },
+                },
+                {
+                    "id": ocr_node_id,
+                    "name": "OCR Text Detection",
+                    "module": "OCRTextDetection",
+                    "configs": {
+                        "input": image_node_id,
+                        "output": "text",
+                    },
+                },
+            ],
+        },
+        "configs": {
+            image_node_id: {
+                "imageFieldType": "base64",
+                "basedata": image_base64,
+                "Image Source": {
+                    "type": "base64",
+                    "value": image_base64,
+                    "mimeType": content_type or "image/jpeg",
+                    "filename": filename,
+                },
+            },
+            ocr_node_id: {
+                "output": "text",
+            },
+        },
+        "payload": {
+            "imageFieldType": "base64",
+            "basedata": image_base64,
+            "Image Source": {
+                "type": "base64",
+                "value": image_base64,
+                "mimeType": content_type or "image/jpeg",
+                "filename": filename,
+            },
+        },
+    }
+
+
+def recursive_find_ocr_text(payload, parent_key: str = "") -> str | None:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            key_text = str(key)
+            if key_text in OCR_TEXT_KEYS and isinstance(value, str) and value.strip():
+                sibling_keys = {str(item).lower() for item in payload.keys()}
+                image_context = (
+                    "image" in parent_key.lower()
+                    or "outputimage" in sibling_keys
+                    or "mimetype" in sibling_keys
+                    or "mimeType" in payload
+                )
+                if key_text == "value" and (image_context or value.strip().lower().startswith("data:image")):
+                    continue
+                return value.strip()
+            if "text" in key_text.lower() and isinstance(value, str) and value.strip():
+                return value.strip()
+            if "detection" in key_text.lower() and isinstance(value, str) and value.strip():
+                return value.strip()
+
+        for key, value in payload.items():
+            found = recursive_find_ocr_text(value, parent_key=str(key))
+            if found:
+                return found
+
+    if isinstance(payload, list):
         texts = []
-        for item in items:
-            if isinstance(item, dict):
-                text = item.get("text") or item.get("label") or item.get("value")
-                if isinstance(text, str) and text.strip():
-                    texts.append(text.strip())
-            elif isinstance(item, str) and item.strip():
+        for item in payload:
+            if isinstance(item, str) and item.strip():
                 texts.append(item.strip())
+            else:
+                found = recursive_find_ocr_text(item, parent_key=parent_key)
+                if found:
+                    texts.append(found)
         if texts:
             return " ".join(texts)
 
     return None
 
 
-def call_novavision_ocr(image_base64: str, filename: str | None, content_type: str | None) -> str | None:
-    api_url = os.getenv("NOVAVISION_API_URL")
-    if not api_url:
-        return None
+def response_has_output_image_only(payload) -> bool:
+    found_text = False
+    found_image = False
 
-    payload = {
-        "image_base64": image_base64,
-        "filename": filename,
-        "content_type": content_type,
-        "task": "ocr_text_detection",
-    }
+    def walk(value, parent_key: str = ""):
+        nonlocal found_text, found_image
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                key_lower = str(key).lower()
+                if key_lower in {"outputimage", "output_image"} or "mime" in key_lower:
+                    found_image = True
+                if "text" in key_lower or str(key) in OCR_TEXT_KEYS:
+                    if isinstance(inner, str) and inner.strip() and "image" not in parent_key.lower():
+                        found_text = True
+                walk(inner, parent_key=str(key))
+        elif isinstance(value, list):
+            for item in value:
+                walk(item, parent_key=parent_key)
+
+    walk(payload)
+    return found_image and not found_text
+
+
+def call_novavision_ocr(image_base64: str, filename: str | None, content_type: str | None) -> tuple[str | None, dict]:
+    api_url = os.getenv("NOVAVISION_API_URL", "http://127.0.0.1:9005/api")
+
+    payload = build_novavision_request_payload(image_base64, filename, content_type)
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
 
-    api_key = os.getenv("NOVAVISION_API_KEY")
+    api_key = os.getenv("NOVAVISION_ACCESS_TOKEN") or os.getenv("NOVAVISION_API_KEY")
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+
+    debug = {
+        "novavision_called": True,
+        "novavision_api_url": api_url,
+        "raw_response_keys": [],
+        "ocr_output_found": False,
+        "fallback_used": False,
+    }
 
     api_request = request.Request(api_url, data=body, headers=headers, method="POST")
     try:
         with request.urlopen(api_request, timeout=20) as response:
             response_body = response.read().decode("utf-8")
-    except (error.URLError, TimeoutError, ValueError):
-        return None
+    except (error.URLError, TimeoutError, ValueError) as exc:
+        debug["error"] = str(exc)
+        return None, debug
 
     try:
         response_payload = json.loads(response_body)
     except json.JSONDecodeError:
-        return response_body.strip() or None
+        text = response_body.strip() or None
+        debug["raw_response_keys"] = ["<non-json-response>"]
+        debug["ocr_output_found"] = bool(text)
+        return text, debug
 
-    return extract_ocr_text_from_response(response_payload)
+    debug["raw_response_keys"] = list(response_payload.keys()) if isinstance(response_payload, dict) else [type(response_payload).__name__]
+    text = recursive_find_ocr_text(response_payload)
+    debug["ocr_output_found"] = bool(text)
+    if not text and response_has_output_image_only(response_payload):
+        debug["message"] = "NovaVision response içinde OCR text output bulunamadı. Flow output config sadece image döndürüyor olabilir."
+    return text, debug
 
 
 def fold_for_match(value: str) -> str:
@@ -299,7 +419,13 @@ def make_display_name(matched_name: str, usage: dict) -> str:
     return f"{matched_name} {dose}"
 
 
-def build_prescription_summary(patient_id: str, ocr_text: str, source: str, image_meta: dict | None = None) -> dict:
+def build_prescription_summary(
+    patient_id: str,
+    ocr_text: str,
+    source: str,
+    image_meta: dict | None = None,
+    debug: dict | None = None,
+) -> dict:
     find_patient(patient_id)
     found_medications = []
 
@@ -332,6 +458,13 @@ def build_prescription_summary(patient_id: str, ocr_text: str, source: str, imag
         "source": source,
         "image": image_meta,
         "ocr_text": ocr_text,
+        "debug": debug or {
+            "novavision_called": False,
+            "novavision_api_url": os.getenv("NOVAVISION_API_URL", "http://127.0.0.1:9005/api"),
+            "raw_response_keys": [],
+            "ocr_output_found": False,
+            "fallback_used": False,
+        },
         "medication_count": len(found_medications),
         "medications": found_medications,
         "safety_note": "Bu bilgi doktor reçetesine dayalıdır. Tedavi kararı doktor onayı gerektirir.",
@@ -424,9 +557,16 @@ async def prescription_scan(
 
     source = "NovaVision OCR Text Detection simülasyon çıktısı"
     final_ocr_text = ocr_text
+    debug = {
+        "novavision_called": False,
+        "novavision_api_url": os.getenv("NOVAVISION_API_URL", "http://127.0.0.1:9005/api"),
+        "raw_response_keys": [],
+        "ocr_output_found": bool(ocr_text),
+        "fallback_used": False,
+    }
 
     if not final_ocr_text and image_base64:
-        novavision_text = call_novavision_ocr(
+        novavision_text, debug = call_novavision_ocr(
             image_base64=image_base64,
             filename=image.filename if image else None,
             content_type=image.content_type if image else None,
@@ -435,17 +575,20 @@ async def prescription_scan(
             final_ocr_text = novavision_text
             source = "NovaVision OCR Text Detection API çıktısı"
 
-    if not final_ocr_text and os.getenv("NOVAVISION_API_URL"):
+    if not final_ocr_text and image_base64:
         source = "NovaVision OCR metni alınamadı, demo fallback kullanıldı"
+        debug["fallback_used"] = True
 
     if not final_ocr_text:
         final_ocr_text = demo["ocr_text"]
+        debug["fallback_used"] = True
 
     return build_prescription_summary(
         patient_id=patient_id,
         ocr_text=final_ocr_text,
         source=source,
         image_meta=image_meta,
+        debug=debug,
     )
 
 
@@ -537,3 +680,4 @@ def doctor_decision(payload: DoctorDecisionRequest):
         "note": payload.note,
         "status": "Doktor kontrollü iş akışı için kaydedildi",
     }
+

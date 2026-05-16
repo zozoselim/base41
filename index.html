@@ -1206,7 +1206,8 @@
         });
 
         if (!response.ok) {
-          throw new Error("Backend yanıt vermedi");
+          resetPrescriptionScan(`Backend yanıt verdi fakat işlem başarısız oldu. HTTP ${response.status}`);
+          return;
         }
 
         const result = await response.json();
@@ -1472,3 +1473,4 @@
   </script>
 </body>
 </html>
+

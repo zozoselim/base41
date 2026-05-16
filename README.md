@@ -53,11 +53,11 @@ uvicorn backend.main:app --reload
 NovaVision gerçek API bağlantısı için opsiyonel ortam değişkenleri:
 
 ```bash
-set NOVAVISION_API_URL=https://your-novavision-ocr-endpoint
-set NOVAVISION_API_KEY=your_optional_api_key
+set NOVAVISION_API_URL=http://127.0.0.1:9005/api
+set NOVAVISION_ACCESS_TOKEN=your_optional_access_token
 ```
 
-`NOVAVISION_API_URL` tanımlı değilse backend demo OCR metnini kullanır.
+`NOVAVISION_API_URL` tanımlı değilse backend varsayılan olarak `http://127.0.0.1:9005/api` adresini dener. NovaVision response içinde OCR text bulunamazsa demo OCR metnini kullanır ve `debug.fallback_used=true` döndürür.
 
 Endpointler:
 
@@ -83,11 +83,12 @@ Local proje tarafında:
 
 1. Frontend reçete fotoğrafını `multipart/form-data` ile `/prescription-scan` endpointine gönderir.
 2. Backend görseli Base64 formatına çevirir.
-3. `NOVAVISION_API_URL` tanımlıysa Base64 görsel NovaVision OCR API'ye POST edilir.
-4. `NOVAVISION_API_URL` tanımlı değilse demo OCR metni kullanılır.
-5. `data/medication_info.json` içindeki ilaç adları OCR metninde aranır.
-6. Bulunan her ilaç için ayrı reçete özeti kartı döndürülür.
-7. Frontend ilaç adı, etken madde, doz, kullanım sıklığı, kullanım zamanı, kullanım süresi, yan etki, uyarı ve doktor onay durumunu gösterir.
+3. Base64 görsel NovaVision OCR API'ye `module`, `executor`, `ws_channel`, `app.nodes`, `configs`, `access-token`, `app_id`, `service` ve `payload` alanlarını içeren request template'iyle POST edilir.
+4. NovaVision response recursive olarak taranır; `outputContent`, `outputText`, `text`, `recognized_text`, `ocr_text`, detection text ve list içindeki `value/text/content` alanları aranır.
+5. Response sadece `outputImage` döndürürse backend debug mesajı üretir: `NovaVision response içinde OCR text output bulunamadı. Flow output config sadece image döndürüyor olabilir.`
+6. `data/medication_info.json` içindeki ilaç adları ve alias listeleri OCR metninde aranır.
+7. Bulunan her ilaç için ayrı reçete özeti kartı döndürülür.
+8. Frontend ilaç adı, etken madde, doz, kullanım sıklığı, kullanım zamanı, kullanım süresi, yan etki, uyarı ve doktor onay durumunu gösterir.
 
 Önemli kurallar:
 
