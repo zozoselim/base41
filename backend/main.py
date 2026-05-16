@@ -225,24 +225,75 @@ def detection_position(detection: dict) -> tuple[float, float]:
     return (float(top or 0), float(left or 0))
 
 
+def is_text_detection_item(value) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("data"), str)
+        and value["data"].strip()
+        and (
+            isinstance(value.get("boundingBox"), dict)
+            or isinstance(value.get("bounding_box"), dict)
+            or isinstance(value.get("bbox"), dict)
+            or "confidence" in value
+            or str(value.get("classLabel", "")).casefold() == "text"
+        )
+    )
+
+
 def collect_detection_text(detections: list) -> str | None:
-    items = [item for item in detections if isinstance(item, dict) and isinstance(item.get("data"), str) and item["data"].strip()]
+    items = [item for item in detections if is_text_detection_item(item)]
     if not items:
         return None
     items.sort(key=detection_position)
     return normalize_ocr_text(" ".join(item["data"].strip() for item in items))
 
 
+def detection_value_to_text(value) -> str | None:
+    if isinstance(value, list):
+        text = collect_detection_text(value)
+        if text:
+            return text
+        nested_items = []
+        for item in value:
+            nested_items.extend(recursive_collect_detection_items(item))
+        return collect_detection_text(nested_items)
+
+    if isinstance(value, dict):
+        for list_key in ("value", "data", "items", "detections", "outputDetections"):
+            if isinstance(value.get(list_key), list):
+                text = detection_value_to_text(value[list_key])
+                if text:
+                    return text
+        items = recursive_collect_detection_items(value)
+        return collect_detection_text(items)
+
+    return None
+
+
+def recursive_collect_detection_items(payload) -> list[dict]:
+    if is_text_detection_item(payload):
+        return [payload]
+
+    found = []
+    if isinstance(payload, dict):
+        for value in payload.values():
+            found.extend(recursive_collect_detection_items(value))
+    elif isinstance(payload, list):
+        for item in payload:
+            found.extend(recursive_collect_detection_items(item))
+    return found
+
+
 def recursive_find_output_detections(payload) -> str | None:
     if isinstance(payload, dict):
-        if payload.get("name") in {"outputDetections", "detections"} and isinstance(payload.get("value"), list):
-            text = collect_detection_text(payload["value"])
+        if payload.get("name") in {"outputDetections", "detections"}:
+            text = detection_value_to_text(payload.get("value"))
             if text:
                 return text
 
         for key, value in payload.items():
-            if str(key) in {"outputDetections", "detections"} and isinstance(value, list):
-                text = collect_detection_text(value)
+            if str(key) in {"outputDetections", "detections"}:
+                text = detection_value_to_text(value)
                 if text:
                     return text
 
@@ -252,10 +303,17 @@ def recursive_find_output_detections(payload) -> str | None:
                 return found
 
     if isinstance(payload, list):
+        text = detection_value_to_text(payload)
+        if text:
+            return text
         for item in payload:
             found = recursive_find_output_detections(item)
             if found:
                 return found
+
+    broad_items = recursive_collect_detection_items(payload)
+    if broad_items:
+        return collect_detection_text(broad_items)
 
     return None
 
@@ -651,6 +709,8 @@ async def prescription_scan(
     if not final_ocr_text:
         final_ocr_text = demo["ocr_text"]
         debug["fallback_used"] = True
+    else:
+        final_ocr_text = normalize_ocr_text(final_ocr_text)
 
     return build_prescription_summary(
         patient_id=patient_id,
