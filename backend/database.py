@@ -147,7 +147,7 @@ def patient_tc_identity(patient_id: int) -> str:
 
 def _tc_identity(prefix: str, person_id: int) -> str:
     if not 0 <= person_id <= 999:
-        raise ValueError("person_id must be between 0 and 999")
+        raise ValueError("person_id 0 ile 999 arasında olmalıdır")
     return f"{prefix}{person_id:03d}"
 
 
@@ -209,7 +209,7 @@ def add_column_if_missing(connection: sqlite3.Connection, table_name: str, colum
     _validate_sql_identifier(table_name)
     parts = column_definition.split()
     if len(parts) != 2:
-        raise ValueError("column_definition must be in '<column_name> <column_type>' format")
+        raise ValueError("column_definition '<column_name> <column_type>' formatında olmalıdır")
     column_name, column_type = parts
     _validate_sql_identifier(column_name)
     _validate_sql_identifier(column_type)
@@ -219,7 +219,7 @@ def add_column_if_missing(connection: sqlite3.Connection, table_name: str, colum
 
 def _validate_sql_identifier(value: str) -> None:
     if not SQL_IDENTIFIER_RE.fullmatch(value):
-        raise ValueError("Invalid SQL identifier provided")
+        raise ValueError("Geçersiz SQL tanımlayıcı sağlandı")
 
 
 def init_db() -> None:
