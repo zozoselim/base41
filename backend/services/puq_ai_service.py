@@ -10,7 +10,7 @@ import httpx
 from dotenv import load_dotenv
 
 
-WARNING = "Puq.ai servisine şu anda ulaşılamıyor. Güvenli demo sonucu gösteriliyor."
+WARNING = "Puq.ai service is currently unavailable. Showing fallback demo result."
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
@@ -92,7 +92,7 @@ async def call_puq_webhook(payload: dict[str, Any]) -> dict[str, Any]:
     api_key = os.getenv("PUQ_API_KEY", "").strip()
 
     if not webhook_url or webhook_url == "your_puq_ai_webhook_url":
-        raise RuntimeError("PUQ_WEBHOOK_URL yapılandırılmamış")
+        raise RuntimeError("PUQ_WEBHOOK_URL is not configured")
 
     headers = {
         "Content-Type": "application/json",
@@ -132,14 +132,14 @@ def normalize_puq_response(response: Any, payload: dict[str, Any]) -> dict[str, 
     response.setdefault("highest_risk_pair", "No interaction found")
     response.setdefault(
         "clinical_explanation",
-        "Puq.ai ajanı kritik bir etkileşim döndürmedi. Klinik kullanım için doktor değerlendirmesi gereklidir.",
+        "No critical interaction was returned by the Puq.ai agent. Doctor review remains required for clinical use.",
     )
     response.setdefault("recommended_doctor_action", "Review the result before taking any clinical action.")
     response.setdefault("safer_alternatives", [])
     response.setdefault("high_risk_warning", warning_for_level(response["overall_risk_level"]))
     response.setdefault(
         "safety_note",
-        "Bu sonuç yalnızca klinik karar desteği içindir ve profesyonel tıbbi değerlendirmenin yerine geçmez.",
+        "This result is for clinical decision support only and does not replace professional medical judgment.",
     )
     response = apply_local_safety_floor(response, payload)
     response["is_fallback"] = False
@@ -394,7 +394,7 @@ def local_risk_assessment(patient_data: dict[str, Any], current_medications: lis
     if allergy_hit:
         interactions.append(
             {
-                "current_medicine": "Bilinen alerji",
+                "current_medicine": "Known allergy",
                 "new_medicine": new_name,
                 "interaction_found": True,
                 "risk_score": 75,
@@ -416,7 +416,7 @@ def local_risk_assessment(patient_data: dict[str, Any], current_medications: lis
         score = min(100, score)
         interactions.append(
             {
-                "current_medicine": "Mevcut ilaç listesi",
+                "current_medicine": "Current medication list",
                 "new_medicine": new_name,
                 "interaction_found": False,
                 "risk_score": score,
@@ -469,8 +469,8 @@ def known_interaction(current: str, new: str) -> dict[str, Any] | None:
         {
             "drugs": {"aspirin", "ibuprofen"},
             "base_score": 54,
-            "possible_side_effects": ["Gastrointestinal kanama", "Antiplatelet etkide azalma"],
-            "reason": "İki ilaç da mide mukozasını irrite edebilir ve platelet ilişkili kanama riskini etkileyebilir.",
+            "possible_side_effects": ["Gastrointestinal bleeding", "Reduced antiplatelet effect"],
+            "reason": "Both medicines can irritate the gastric mucosa and affect platelet-related bleeding risk.",
         },
         {
             "drugs": {"lisinopril", "spironolactone"},
@@ -481,8 +481,8 @@ def known_interaction(current: str, new: str) -> dict[str, Any] | None:
         {
             "drugs": {"metformin", "contrast agent"},
             "base_score": 58,
-            "possible_side_effects": ["Böbrekle ilişkili advers etki", "Duyarlı hastalarda laktik asidoz riski"],
-            "reason": "Kontrast maruziyeti çevresinde böbrek fonksiyonu bozulmuşsa Metformin riski artabilir.",
+            "possible_side_effects": ["Kidney-related adverse effect", "Lactic acidosis risk in susceptible patients"],
+            "reason": "Metformin risk may rise when kidney function is impaired around contrast exposure.",
         },
         {
             "drugs": {"clopidogrel", "omeprazole"},
@@ -493,8 +493,8 @@ def known_interaction(current: str, new: str) -> dict[str, Any] | None:
         {
             "drugs": {"tamoxifen", "fluoxetine"},
             "base_score": 48,
-            "possible_side_effects": ["Endokrin tedavi etkinliğinde azalma"],
-            "reason": "Fluoxetine Tamoxifen metabolizmasını etkileyebilir.",
+            "possible_side_effects": ["Reduced endocrine therapy effectiveness"],
+            "reason": "Fluoxetine may affect Tamoxifen metabolism.",
         },
         {
             "drugs": {"ibuprofen", "prednisone"},
@@ -530,30 +530,28 @@ def known_interaction(current: str, new: str) -> dict[str, Any] | None:
 
 def patient_specific_factors(patient: dict[str, Any], current_medications: list[dict[str, Any]], new_name: str) -> list[str]:
     factors = []
-    cancer_status = str(patient.get("cancer_status", "")).strip()
-    has_cancer = bool(cancer_status and cancer_status not in {"No active cancer", "Aktif kanser yok", "Yok", "N/A"})
     if patient.get("age", 0) > 65:
-        factors.append("65 yaş üzeri")
+        factors.append("Age over 65")
     if patient.get("hemoglobin", 99) < 11:
-        factors.append("Düşük hemoglobin")
+        factors.append("Low hemoglobin")
     if "impairment" in str(patient.get("kidney_function_status", "")).lower():
-        factors.append("Böbrek fonksiyon bozukluğu")
+        factors.append("Kidney function impairment")
     if "elevated" in str(patient.get("liver_function_status", "")).lower():
-        factors.append("Karaciğer enzim yüksekliği")
-    if has_cancer:
-        factors.append("Kanser tanısı")
-    if has_cancer and ("Stage III" in str(patient.get("cancer_stage", "")) or "Stage IV" in str(patient.get("cancer_stage", ""))):
-        factors.append("İleri kanser evresi")
+        factors.append("Liver enzyme elevation")
+    if patient.get("cancer_status") and patient.get("cancer_status") != "No active cancer":
+        factors.append("Cancer diagnosis")
+    if "Stage III" in str(patient.get("cancer_stage", "")) or "Stage IV" in str(patient.get("cancer_stage", "")):
+        factors.append("Advanced cancer stage")
     if str(patient.get("smoking_status", "")).lower() == "current smoker":
-        factors.append("Aktif sigara kullanımı")
+        factors.append("Current smoker")
     if str(patient.get("alcohol_use", "")).lower() in {"regular", "occasional"}:
-        factors.append("Alkol kullanımı")
+        factors.append("Alcohol use")
     if patient.get("chronic_disease_count", 0) >= 3:
-        factors.append("Çoklu kronik hastalık")
+        factors.append("Multiple chronic diseases")
     if len(current_medications) >= 5:
-        factors.append("Çoklu ilaç kullanımı")
+        factors.append("Polypharmacy")
     if allergy_conflict(patient.get("allergies", ""), new_name):
-        factors.append("Kayıtlı alerji")
+        factors.append("Recorded allergy")
     return factors
 
 
@@ -665,17 +663,17 @@ def allergy_conflict(allergies: str, medicine_name: str) -> bool:
 
 def factor_score(factors: list[str]) -> int:
     weights = {
-        "65 yaş üzeri": 8,
-        "Düşük hemoglobin": 9,
-        "Böbrek fonksiyon bozukluğu": 8,
-        "Karaciğer enzim yüksekliği": 6,
-        "Kanser tanısı": 7,
-        "İleri kanser evresi": 8,
-        "Aktif sigara kullanımı": 4,
-        "Alkol kullanımı": 4,
-        "Çoklu kronik hastalık": 6,
-        "Çoklu ilaç kullanımı": 6,
-        "Kayıtlı alerji": 15,
+        "Age over 65": 8,
+        "Low hemoglobin": 9,
+        "Kidney function impairment": 8,
+        "Liver enzyme elevation": 6,
+        "Cancer diagnosis": 7,
+        "Advanced cancer stage": 8,
+        "Current smoker": 4,
+        "Alcohol use": 4,
+        "Multiple chronic diseases": 6,
+        "Polypharmacy": 6,
+        "Recorded allergy": 15,
     }
     return sum(weights.get(factor, 0) for factor in factors)
 
@@ -690,10 +688,10 @@ def risk_level_from_score(score: int) -> str:
 
 def recommended_action(level: str) -> str:
     if level == "High":
-        return "Bu ilacı onaylamadan önce doktor değerlendirmesi gereklidir. Alternatifleri, ek laboratuvarları veya uzman/klinik farmakoloji değerlendirmesini düşünün."
+        return "Doctor review required before approving this medicine. Consider alternatives, additional labs, or specialist/pharmacology review."
     if level == "Medium":
-        return "Doktor değerlendirmesi gereklidir. Endikasyonu, dozu, izlem planını ve hastaya özel risk faktörlerini doğrulayın."
-    return "Düşük riskli destek sonucu. Herhangi bir klinik işlem öncesinde yine de doktor değerlendirmesi gereklidir."
+        return "Doctor review required. Confirm indication, dose, monitoring plan, and patient-specific risk factors."
+    return "Low-risk support result. Doctor review is still required before any clinical action."
 
 
 def warning_for_level(level: str) -> str:
@@ -806,14 +804,14 @@ def safer_alternatives_for(
 
 
 def clinical_explanation(new_name: str, highest: dict[str, Any], factors: list[str]) -> str:
-    factor_text = ", ".join(factors) if factors else "belirgin yedek risk değiştiricisi yok"
+    factor_text = ", ".join(factors) if factors else "no major fallback risk modifiers"
     if highest["interaction_found"]:
         return (
-            f"Yeni ilaç {new_name}, mevcut ilaç listesiyle karşılaştırıldı. "
-            f"En yüksek yedek risk {highest['current_medicine']} için bulundu. Gerekçe: {highest['reason']} "
-            f"Dikkate alınan hastaya özel faktörler: {factor_text}."
+            f"The new medicine {new_name} was compared with the current medication list. "
+            f"The highest fallback risk was found for {highest['current_medicine']} due to: {highest['reason']} "
+            f"Patient-specific factors considered: {factor_text}."
         )
     return (
-        f"{new_name} için yedek demo mantığı yüksek güvenli ciddi bir etkileşim saptamadı. "
-        f"Dikkate alınan hastaya özel faktörler: {factor_text}. Bu nihai bir tıbbi karar değildir."
+        f"No high-confidence serious interaction was detected by fallback demo logic for {new_name}. "
+        f"Patient-specific factors considered: {factor_text}. This is not a final medical decision."
     )
