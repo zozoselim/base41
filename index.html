@@ -1213,11 +1213,7 @@
         const result = await response.json();
         renderPrescriptionScan(result);
       } catch (error) {
-        renderPrescriptionScan({
-          ...prescriptionScanDemo,
-          patient_id: selectedPatient.id,
-          source: "Backend veya NovaVision API kapalı olduğu için frontend simülasyon çıktısı"
-        });
+        resetPrescriptionScan("Backend bağlantısı kurulamadı. Lütfen FastAPI servisinin 8010 portunda çalıştığını kontrol edin.");
       }
     }
 

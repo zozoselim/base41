@@ -197,6 +197,69 @@ OCR_TEXT_KEYS = {
 }
 
 
+OCR_REPLACEMENTS = {
+    "Amoksisil": "Amoksisilin",
+}
+
+
+def normalize_ocr_text(text: str) -> str:
+    normalized = text
+    for wrong, right in OCR_REPLACEMENTS.items():
+        normalized = re.sub(rf"(?<!\w){re.escape(wrong)}(?!\w)", right, normalized, flags=re.IGNORECASE)
+
+    def fix_mg(match: re.Match) -> str:
+        amount = match.group(1).upper().replace("O", "0")
+        return f"{amount} mg"
+
+    normalized = re.sub(r"\b(\d+[O0]*|[O0]?\d+[O0]*)\s*mg\b", fix_mg, normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
+def detection_position(detection: dict) -> tuple[float, float]:
+    box = detection.get("boundingBox") or detection.get("bounding_box") or detection.get("bbox") or {}
+    if not isinstance(box, dict):
+        return (0, 0)
+    top = box.get("top", box.get("y", box.get("minY", 0)))
+    left = box.get("left", box.get("x", box.get("minX", 0)))
+    return (float(top or 0), float(left or 0))
+
+
+def collect_detection_text(detections: list) -> str | None:
+    items = [item for item in detections if isinstance(item, dict) and isinstance(item.get("data"), str) and item["data"].strip()]
+    if not items:
+        return None
+    items.sort(key=detection_position)
+    return normalize_ocr_text(" ".join(item["data"].strip() for item in items))
+
+
+def recursive_find_output_detections(payload) -> str | None:
+    if isinstance(payload, dict):
+        if payload.get("name") in {"outputDetections", "detections"} and isinstance(payload.get("value"), list):
+            text = collect_detection_text(payload["value"])
+            if text:
+                return text
+
+        for key, value in payload.items():
+            if str(key) in {"outputDetections", "detections"} and isinstance(value, list):
+                text = collect_detection_text(value)
+                if text:
+                    return text
+
+        for value in payload.values():
+            found = recursive_find_output_detections(value)
+            if found:
+                return found
+
+    if isinstance(payload, list):
+        for item in payload:
+            found = recursive_find_output_detections(item)
+            if found:
+                return found
+
+    return None
+
+
 def build_novavision_request_payload(image_base64: str, filename: str | None, content_type: str | None) -> dict:
     app_id = os.getenv("NOVAVISION_APP_ID", "ocr-text-detection")
     image_node_id = os.getenv("NOVAVISION_IMAGE_NODE_ID", "ImageLoad")
@@ -366,7 +429,13 @@ def call_novavision_ocr(image_base64: str, filename: str | None, content_type: s
         return text, debug
 
     debug["raw_response_keys"] = list(response_payload.keys()) if isinstance(response_payload, dict) else [type(response_payload).__name__]
-    text = recursive_find_ocr_text(response_payload)
+    text = recursive_find_output_detections(response_payload)
+    debug["ocr_output_type"] = "outputDetections" if text else None
+    if not text:
+        text = recursive_find_ocr_text(response_payload)
+        if text:
+            text = normalize_ocr_text(text)
+            debug["ocr_output_type"] = "text"
     debug["ocr_output_found"] = bool(text)
     if not text and response_has_output_image_only(response_payload):
         debug["message"] = "NovaVision response içinde OCR text output bulunamadı. Flow output config sadece image döndürüyor olabilir."
@@ -573,7 +642,7 @@ async def prescription_scan(
         )
         if novavision_text:
             final_ocr_text = novavision_text
-            source = "NovaVision OCR Text Detection API çıktısı"
+            source = "NovaVision OCR Text Detection"
 
     if not final_ocr_text and image_base64:
         source = "NovaVision OCR metni alınamadı, demo fallback kullanıldı"
