@@ -1,23 +1,23 @@
 # OncoSafe Vision AI
 
-OncoSafe Vision AI is a healthcare hackathon MVP for doctors. It is a clinical decision support prototype that helps review the risk of adding a new medicine for a synthetic patient already using multiple medicines.
+OncoSafe Vision AI, doktorlar için hazırlanmış bir sağlık hackathon MVP'sidir. Sistem, çoklu ilaç kullanan sentetik bir hastaya yeni ilaç eklenirken oluşabilecek riski incelemeye yardımcı olan bir klinik karar destek prototipidir.
 
-Important safety rules:
+Önemli güvenlik kuralları:
 
-- The system never makes final medical decisions.
-- The system never tells a patient to start, stop, or change medicine.
-- All results are shown as clinical decision support only.
-- Medium and High risk require doctor review.
-- All seeded data is synthetic.
+- Sistem hiçbir zaman nihai tıbbi karar vermez.
+- Sistem hastaya ilaç başlatma, durdurma veya değiştirme talimatı vermez.
+- Tüm sonuçlar yalnızca klinik karar desteği olarak gösterilir.
+- Orta ve yüksek risk doktor değerlendirmesi gerektirir.
+- Otomatik oluşturulan tüm veriler sentetiktir.
 
-## Stack
+## Teknoloji
 
 - Frontend: React + Vite
 - Backend: FastAPI
-- Database: SQLite
-- AI integration: Puq.ai webhook/API with safe fallback response
+- Veritabanı: SQLite
+- Yapay zeka entegrasyonu: Güvenli yedek yanıtlı Puq.ai webhook/API
 
-## Run Locally
+## Yerelde Çalıştırma
 
 Backend:
 
@@ -33,28 +33,28 @@ corepack pnpm install
 corepack pnpm dev
 ```
 
-Open:
+Açılacak adres:
 
 ```text
 http://127.0.0.1:5173
 ```
 
-API docs:
+API dokümantasyonu:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## Puq.ai Configuration
+## Puq.ai Yapılandırması
 
-Create or edit `.env`:
+`.env` dosyasını oluşturun veya düzenleyin:
 
 ```env
 PUQ_WEBHOOK_URL=your_puq_ai_webhook_url
 PUQ_API_KEY=your_puq_ai_api_key
 ```
 
-The backend sends this header to Puq.ai:
+Backend Puq.ai servisine şu başlıkla istek gönderir:
 
 ```json
 {
@@ -63,29 +63,30 @@ The backend sends this header to Puq.ai:
 }
 ```
 
-If Puq.ai is unavailable or not configured, `/analyze-new-medicine` returns a fallback JSON response with:
+Puq.ai kullanılamazsa veya yapılandırılmamışsa `/analyze-new-medicine` güvenli bir yedek JSON yanıtı döndürür:
 
 ```json
 {
   "is_fallback": true,
-  "warning": "Puq.ai service is currently unavailable. Showing fallback demo result."
+  "warning": "Puq.ai servisine şu anda ulaşılamıyor. Güvenli demo sonucu gösteriliyor."
 }
 ```
 
-## Main Flow
+## Ana Akış
 
-Doctor login
--> Select patient
--> View patient profile and current medicines
--> Enter new medicine
+Doktor girişi
+-> Hasta seçimi
+-> Hasta profili ve mevcut ilaçların görüntülenmesi
+-> Yeni ilacın girilmesi
 -> FastAPI `/analyze-new-medicine`
--> SQLite lookup
--> Puq.ai webhook or fallback
--> Frontend risk result display
--> Doctor decision saved through `/doctor-decision`
+-> SQLite sorgusu
+-> Puq.ai webhook veya güvenli yedek yanıt
+-> Frontend risk sonucu gösterimi
+-> Doktor kararının `/doctor-decision` üzerinden kaydedilmesi
 
-## API Endpoints
+## API Endpointleri
 
+- `POST /auth/login`
 - `GET /doctors`
 - `GET /patients`
 - `GET /patients/{patient_id}`
@@ -93,4 +94,4 @@ Doctor login
 - `POST /analyze-new-medicine`
 - `POST /doctor-decision`
 
-The SQLite database is created automatically as `oncosafe.sqlite3` on backend startup and seeded with 5 doctors, 50 synthetic patients, and 2 to 6 medicines per patient.
+SQLite veritabanı backend başlangıcında otomatik olarak `oncosafe.sqlite3` adıyla oluşturulur. Veritabanına 5 doktor, 50 sentetik hasta ve hasta başına 2 ile 6 arasında ilaç otomatik eklenir.

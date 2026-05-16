@@ -7,9 +7,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.database import (
+    authenticate_doctor,
+    authenticate_patient,
+    create_doctor,
+    create_patient,
     get_all_doctors,
     get_all_patients,
+    get_disease_catalog,
     get_patient,
+    get_patient_diagnosis_codes,
     get_patient_medicines,
     init_db,
     save_doctor_decision,
@@ -23,7 +29,7 @@ from backend.services.puq_ai_service import (
 
 app = FastAPI(
     title="OncoSafe Vision AI API",
-    description="Clinical decision support hackathon MVP using synthetic data, SQLite, and Puq.ai webhook integration.",
+    description="Sentetik veri, SQLite ve Puq.ai webhook entegrasyonu kullanan klinik karar destek MVP API'si.",
     version="1.0.0",
 )
 
@@ -42,8 +48,49 @@ class NewMedicine(BaseModel):
     frequency: str = Field(..., min_length=1)
 
 
+class LoginRequest(BaseModel):
+    role: Literal["doctor", "patient"]
+    tc_identity: str = Field(..., min_length=11, max_length=11)
+    password: str = Field(..., min_length=1)
+
+
+class RegisterDoctorRequest(BaseModel):
+    tc_identity: str = Field(..., min_length=11, max_length=11)
+    password: str = Field(..., min_length=4)
+    name: str = Field(..., min_length=2)
+    specialty: str = Field("Tıbbi Onkoloji", min_length=2)
+    hospital: str = Field("Base41 Üniversitesi Hastanesi", min_length=2)
+    experience_years: int = Field(1, ge=0, le=70)
+    email: str = Field(..., min_length=5)
+
+
+class RegisterPatientRequest(BaseModel):
+    tc_identity: str = Field(..., min_length=11, max_length=11)
+    password: str = Field(..., min_length=4)
+    doctor_id: int
+    name: str = Field(..., min_length=2)
+    age: int = Field(45, ge=0, le=120)
+    gender: str = Field("Kadın", min_length=2)
+    height_cm: int = Field(165, ge=80, le=230)
+    weight_kg: int = Field(70, ge=20, le=250)
+    smoking_status: str = "Hiç sigara içmemiş"
+    alcohol_use: str = "Yok"
+    diagnoses: str = "Genel takip"
+    allergies: str = "Yok"
+    creatinine: float = Field(0.9, ge=0)
+    alt: int = Field(24, ge=0)
+    ast: int = Field(22, ge=0)
+    hemoglobin: float = Field(13.2, ge=0)
+    cancer_status: str = ""
+    cancer_stage: str = ""
+    kidney_function_status: str = "Normal"
+    liver_function_status: str = "Normal"
+    chronic_disease_count: int = Field(1, ge=0)
+
+
 class AnalyzeNewMedicineRequest(BaseModel):
     patient_id: int
+    doctor_id: int | None = None
     new_medicine: NewMedicine
 
 
@@ -66,8 +113,20 @@ def health() -> dict:
     return {
         "status": "ok",
         "app": "OncoSafe Vision AI",
-        "safety_note": "Clinical decision support only. Doctor review is required.",
+        "safety_note": "Yalnızca klinik karar desteğidir. Doktor değerlendirmesi gereklidir.",
     }
+
+
+@app.post("/auth/login")
+def login(payload: LoginRequest) -> dict:
+    if payload.role == "doctor":
+        user = authenticate_doctor(payload.tc_identity, payload.password)
+    else:
+        user = authenticate_patient(payload.tc_identity, payload.password)
+
+    if not user:
+        raise HTTPException(status_code=401, detail="TC kimlik numarası veya şifre hatalı")
+    return {"role": payload.role, "user": user}
 
 
 @app.get("/doctors")
@@ -75,17 +134,41 @@ def doctors() -> list[dict]:
     return get_all_doctors()
 
 
+@app.get("/disease-codes")
+def disease_codes() -> list[dict]:
+    return get_disease_catalog()
+
+
+@app.post("/doctors")
+def register_doctor(payload: RegisterDoctorRequest) -> dict:
+    try:
+        doctor = create_doctor(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return doctor
+
+
 @app.get("/patients")
-def patients() -> list[dict]:
-    return get_all_patients()
+def patients(doctor_id: int | None = None) -> list[dict]:
+    return get_all_patients(doctor_id=doctor_id)
+
+
+@app.post("/patients")
+def register_patient(payload: RegisterPatientRequest) -> dict:
+    try:
+        patient = create_patient(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return patient
 
 
 @app.get("/patients/{patient_id}")
-def patient_detail(patient_id: int) -> dict:
-    patient = get_patient(patient_id)
+def patient_detail(patient_id: int, doctor_id: int | None = None) -> dict:
+    patient = get_patient(patient_id, doctor_id=doctor_id)
     if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise HTTPException(status_code=404, detail="Hasta bulunamadı")
     patient["current_medications"] = get_patient_medicines(patient_id)
+    patient["diagnosis_codes"] = get_patient_diagnosis_codes(patient_id)
     patient["synthetic_data"] = True
     return patient
 
@@ -93,15 +176,15 @@ def patient_detail(patient_id: int) -> dict:
 @app.get("/patients/{patient_id}/medicines")
 def patient_medicines(patient_id: int) -> list[dict]:
     if not get_patient(patient_id):
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise HTTPException(status_code=404, detail="Hasta bulunamadı")
     return get_patient_medicines(patient_id)
 
 
 @app.post("/analyze-new-medicine")
 async def analyze_new_medicine(payload: AnalyzeNewMedicineRequest) -> dict:
-    patient = get_patient(payload.patient_id)
+    patient = get_patient(payload.patient_id, doctor_id=payload.doctor_id)
     if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise HTTPException(status_code=404, detail="Hasta bulunamadı")
 
     current_medications = get_patient_medicines(payload.patient_id)
     new_medicine = payload.new_medicine.model_dump()
@@ -126,10 +209,10 @@ async def analyze_new_medicine(payload: AnalyzeNewMedicineRequest) -> dict:
 
 @app.post("/doctor-decision")
 def doctor_decision(payload: DoctorDecisionRequest) -> dict:
-    if not get_patient(payload.patient_id):
-        raise HTTPException(status_code=404, detail="Patient not found")
+    if not get_patient(payload.patient_id, doctor_id=payload.doctor_id):
+        raise HTTPException(status_code=404, detail="Hasta bulunamadı")
     if payload.doctor_id not in {doctor["id"] for doctor in get_all_doctors()}:
-        raise HTTPException(status_code=404, detail="Doctor not found")
+        raise HTTPException(status_code=404, detail="Doktor bulunamadı")
 
     saved = save_doctor_decision(
         doctor_id=payload.doctor_id,
@@ -142,5 +225,5 @@ def doctor_decision(payload: DoctorDecisionRequest) -> dict:
     return {
         "status": "saved",
         "decision": saved,
-        "safety_note": "Decision recorded for doctor-controlled workflow. The system did not make a final medical decision.",
+        "safety_note": "Karar doktor kontrollü iş akışı için kaydedildi. Sistem nihai tıbbi karar vermez.",
     }
