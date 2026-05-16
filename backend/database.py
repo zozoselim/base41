@@ -219,7 +219,7 @@ def add_column_if_missing(connection: sqlite3.Connection, table_name: str, colum
 
 def _validate_sql_identifier(value: str) -> None:
     if not SQL_IDENTIFIER_RE.fullmatch(value):
-        raise ValueError(f"Invalid SQL identifier: {value}")
+        raise ValueError("Invalid SQL identifier provided")
 
 
 def init_db() -> None:
