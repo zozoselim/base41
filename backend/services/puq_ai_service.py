@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -17,6 +18,28 @@ load_dotenv(ROOT / ".env")
 
 class MedicationCatalogError(ValueError):
     pass
+
+
+class PuqAIServiceError(RuntimeError):
+    pass
+
+
+class PuqAIResponseFormatError(PuqAIServiceError):
+    def __init__(self, message: str, raw_preview: str | None = None):
+        super().__init__(message)
+        self.raw_preview = raw_preview
+
+
+class PuqAIHTTPError(PuqAIServiceError):
+    pass
+
+
+class PuqAIAsyncRunStarted(PuqAIServiceError):
+    def __init__(self, run_id: str, workflow_id: str | None = None, raw_preview: str | None = None):
+        super().__init__("Puq.ai async workflow run started")
+        self.run_id = run_id
+        self.workflow_id = workflow_id
+        self.raw_preview = raw_preview
 
 
 MEDICATION_CATALOG = {
@@ -63,7 +86,7 @@ def prepare_puq_payload(
     validate_medication(new_medicine["medicine_name"])
     enriched_current = [enrich_medication(item) for item in current_medications]
     enriched_new = enrich_medication(new_medicine)
-    return {
+    payload = {
         "task": "medication_risk_analysis",
         "patient_data": patient_data,
         "current_medications": enriched_current,
@@ -85,6 +108,14 @@ def prepare_puq_payload(
             "output_language": "English with Turkish-friendly clinical labels when useful",
         },
     }
+    public_backend_url = os.getenv("PUBLIC_BACKEND_URL", "").strip().rstrip("/")
+    if public_backend_url:
+        payload["callback"] = {
+            "url": f"{public_backend_url}/puq-callback",
+            "method": "POST",
+            "description": "POST the final Agent output JSON here when the async workflow finishes.",
+        }
+    return payload
 
 
 async def call_puq_webhook(payload: dict[str, Any]) -> dict[str, Any]:
@@ -92,28 +123,66 @@ async def call_puq_webhook(payload: dict[str, Any]) -> dict[str, Any]:
     api_key = os.getenv("PUQ_API_KEY", "").strip()
 
     if not webhook_url or webhook_url == "your_puq_ai_webhook_url":
-        raise RuntimeError("PUQ_WEBHOOK_URL is not configured")
+        raise PuqAIHTTPError("PUQ_WEBHOOK_URL is not configured")
 
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Token {api_key}",
     }
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.post(webhook_url, json=payload, headers=headers)
-        response.raise_for_status()
+    async with httpx.AsyncClient(timeout=90) as client:
+        try:
+            response = await client.post(webhook_url, json=payload, headers=headers)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            body_preview = error.response.text[:500]
+            raise PuqAIHTTPError(
+                f"Puq.ai HTTP {error.response.status_code}: {body_preview}"
+            ) from error
+        except httpx.RequestError as error:
+            raise PuqAIHTTPError(f"Puq.ai request failed: {error}") from error
         try:
             data = response.json()
         except json.JSONDecodeError:
             data = response.text
 
+    if is_async_start_response(data):
+        raise PuqAIAsyncRunStarted(
+            run_id=data["run_id"],
+            workflow_id=data.get("workflow_id"),
+            raw_preview=preview_response(data),
+        )
+
     return normalize_puq_response(data, payload)
 
 
+async def get_puq_execution(run_id: str) -> dict[str, Any]:
+    api_key = os.getenv("PUQ_API_KEY", "").strip()
+    if not api_key or api_key == "your_puq_ai_api_key":
+        raise PuqAIHTTPError("PUQ_API_KEY is not configured")
+
+    headers = {"Authorization": f"Token {api_key}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            response = await client.get(f"https://api.puq.ai/v1/executions/{run_id}", headers=headers)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            body_preview = error.response.text[:500]
+            raise PuqAIHTTPError(f"Puq.ai execution HTTP {error.response.status_code}: {body_preview}") from error
+        except httpx.RequestError as error:
+            raise PuqAIHTTPError(f"Puq.ai execution request failed: {error}") from error
+        return response.json()
+
+
 def normalize_puq_response(response: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    raw_preview = preview_response(response)
     response = extract_structured_result(response)
     if not isinstance(response, dict):
-        raise RuntimeError("Puq.ai response did not contain structured medication risk JSON")
+        raise PuqAIResponseFormatError(
+            "Puq.ai yaniti beklenen yapilandirilmis ilac risk JSON'unu icermiyor.",
+            raw_preview=raw_preview,
+        )
 
+    response = coerce_puq_response_schema(response, payload)
     patient_id = payload["patient_data"]["id"]
     medicine_name = payload["new_medicine"]["medicine_name"]
 
@@ -122,7 +191,10 @@ def normalize_puq_response(response: Any, payload: dict[str, Any]) -> dict[str, 
             int(item.get("risk_score", 0)) for item in response["detected_interactions"]
         )
     if "overall_risk_score" not in response and "overall_risk_level" not in response:
-        raise RuntimeError("Puq.ai response is missing overall_risk_score and overall_risk_level")
+        raise PuqAIResponseFormatError(
+            "Puq.ai yanitinda overall_risk_score veya overall_risk_level alani eksik.",
+            raw_preview=raw_preview,
+        )
 
     response.setdefault("patient_id", patient_id)
     response.setdefault("new_medicine", medicine_name)
@@ -160,6 +232,13 @@ def extract_structured_result(value: Any) -> dict[str, Any] | None:
             "content",
             "text",
             "body",
+            "response_body",
+            "step_output",
+            "stepOutput",
+            "outputs",
+            "output_data",
+            "result_data",
+            "return_value",
             "json",
         ):
             if key in value:
@@ -186,6 +265,51 @@ def extract_structured_result(value: Any) -> dict[str, Any] | None:
     return None
 
 
+def find_structured_result_candidates(value: Any, path: str = "$", limit: int = 12) -> list[dict[str, str]]:
+    candidates: list[dict[str, str]] = []
+    _collect_structured_result_candidates(value, path, candidates, limit, set())
+    return candidates
+
+
+def _collect_structured_result_candidates(
+    value: Any,
+    path: str,
+    candidates: list[dict[str, str]],
+    limit: int,
+    seen: set[int],
+) -> None:
+    if len(candidates) >= limit:
+        return
+
+    if isinstance(value, (dict, list)):
+        value_id = id(value)
+        if value_id in seen:
+            return
+        seen.add(value_id)
+
+    if isinstance(value, dict):
+        if is_risk_result(value):
+            candidates.append({"path": path, "preview": preview_response(value)})
+            return
+        for key, nested_value in value.items():
+            _collect_structured_result_candidates(
+                nested_value,
+                f"{path}.{key}",
+                candidates,
+                limit,
+                seen,
+            )
+            if len(candidates) >= limit:
+                return
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _collect_structured_result_candidates(item, f"{path}[{index}]", candidates, limit, seen)
+            if len(candidates) >= limit:
+                return
+    elif isinstance(value, str) and looks_like_risk_json(value):
+        candidates.append({"path": path, "preview": re.sub(r"\s+", " ", value).strip()[:800]})
+
+
 def is_risk_result(value: dict[str, Any]) -> bool:
     return any(
         key in value
@@ -194,7 +318,55 @@ def is_risk_result(value: dict[str, Any]) -> bool:
             "overall_risk_level",
             "detected_interactions",
             "highest_risk_pair",
+            "risk_score",
+            "risk_level",
+            "detected_interaction",
         )
+    )
+
+
+def coerce_puq_response_schema(response: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    patient_id = payload["patient_data"]["id"]
+    new_medicine = payload["new_medicine"]["medicine_name"]
+
+    if "overall_risk_score" not in response and "risk_score" in response:
+        response["overall_risk_score"] = response["risk_score"]
+    if "overall_risk_level" not in response and "risk_level" in response:
+        response["overall_risk_level"] = response["risk_level"]
+    if "highest_risk_pair" not in response and "detected_interaction" in response:
+        response["highest_risk_pair"] = response["detected_interaction"]
+
+    if "detected_interactions" not in response and "detected_interaction" in response:
+        pair_text = str(response.get("detected_interaction") or "Current medication list")
+        current_medicine = pair_text.split("+")[0].strip() if "+" in pair_text else "Current medication list"
+        response["detected_interactions"] = [
+            {
+                "current_medicine": current_medicine,
+                "new_medicine": new_medicine,
+                "interaction_found": bool(pair_text and pair_text.lower() not in {"none", "no interaction", "no interaction found"}),
+                "risk_score": int(response.get("overall_risk_score", response.get("risk_score", 0)) or 0),
+                "risk_level": response.get("overall_risk_level", response.get("risk_level", "Low")),
+                "possible_side_effects": response.get("possible_side_effects", []),
+                "reason": response.get("clinical_explanation", "Puq.ai returned a legacy single-interaction response."),
+                "patient_specific_factors": response.get("patient_specific_risk_factors", []),
+                "dose_frequency_note": response.get("dose_frequency_note", "Dose/frequency should be considered by the medication safety workflow."),
+                "doctor_review_required": bool(response.get("doctor_review_required", False)),
+            }
+        ]
+
+    if "patient_specific_risk_factors" in response and "patient_specific_factors" not in response:
+        response["patient_specific_factors"] = response["patient_specific_risk_factors"]
+    response.setdefault("patient_id", patient_id)
+    response.setdefault("new_medicine", new_medicine)
+    return response
+
+
+def is_async_start_response(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("run_id"), str)
+        and "workflow" in str(value.get("message", "")).lower()
+        and "started" in str(value.get("message", "")).lower()
     )
 
 
@@ -203,14 +375,30 @@ def parse_json_text(text: str) -> Any:
     cleaned = re.sub(r"^```(?:json)?", "", cleaned, flags=re.IGNORECASE).strip()
     cleaned = re.sub(r"```$", "", cleaned).strip()
 
-    for candidate in (cleaned, extract_first_json_object(cleaned)):
+    for candidate in iter_json_object_candidates(cleaned):
         if not candidate:
             continue
         try:
             return json.loads(candidate)
         except json.JSONDecodeError:
-            continue
+            try:
+                parsed = ast.literal_eval(candidate)
+            except (SyntaxError, ValueError):
+                continue
+            if isinstance(parsed, (dict, list)):
+                return parsed
     return None
+
+
+def iter_json_object_candidates(text: str) -> list[str]:
+    candidates = [text]
+    first = extract_first_json_object(text)
+    if first and first not in candidates:
+        candidates.append(first)
+    for balanced in extract_balanced_json_objects(text):
+        if balanced not in candidates:
+            candidates.append(balanced)
+    return candidates
 
 
 def extract_first_json_object(text: str) -> str | None:
@@ -219,6 +407,61 @@ def extract_first_json_object(text: str) -> str | None:
     if start == -1 or end == -1 or end <= start:
         return None
     return text[start : end + 1]
+
+
+def extract_balanced_json_objects(text: str) -> list[str]:
+    objects: list[str] = []
+    start: int | None = None
+    depth = 0
+    in_string = False
+    escape = False
+
+    for index, char in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                objects.append(text[start : index + 1])
+                start = None
+    return objects
+
+
+def looks_like_risk_json(text: str) -> bool:
+    lowered = text.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "overall_risk_score",
+            "overall_risk_level",
+            "detected_interactions",
+            "highest_risk_pair",
+            "risk_score",
+            "risk_level",
+        )
+    )
+
+
+def preview_response(value: Any) -> str:
+    try:
+        text = json.dumps(value, ensure_ascii=False)
+    except TypeError:
+        text = str(value)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:800]
 
 
 def normalize_name(name: str) -> str:

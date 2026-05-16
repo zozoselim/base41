@@ -40,6 +40,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [medicine, setMedicine] = useState(emptyMedicine);
   const [riskResult, setRiskResult] = useState(null);
+  const [pendingRun, setPendingRun] = useState(null);
   const [decisionMessage, setDecisionMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -59,7 +60,7 @@ export default function App() {
           setMedicationCatalog(await catalogResponse.json());
         }
       } catch {
-        setError("Backend API'ye ulaşılamıyor. Önce FastAPI'yi başlatın.");
+        setError("Backend API'ye ulasilamiyor. Once FastAPI'yi baslatin.");
       }
     }
     loadInitialData();
@@ -95,6 +96,7 @@ export default function App() {
     if (!doctor || !selectedPatientId) return;
     async function loadPatient() {
       setRiskResult(null);
+      setPendingRun(null);
       setDecisionMessage("");
       const response = await fetch(`${API_BASE}/patients/${selectedPatientId}?doctor_id=${doctor.id}`);
       if (response.ok) {
@@ -144,6 +146,7 @@ export default function App() {
     setPatient(null);
     setSelectedPatientId(null);
     setRiskResult(null);
+    setPendingRun(null);
     setDecisionMessage("");
     setError("");
   }
@@ -153,7 +156,8 @@ export default function App() {
     if (!doctor || !patient) return;
     setLoading(true);
     setError("");
-    setRiskResult(null);
+      setRiskResult(null);
+      setPendingRun(null);
     setDecisionMessage("");
     try {
       const response = await fetch(`${API_BASE}/analyze-new-medicine`, {
@@ -169,13 +173,59 @@ export default function App() {
         const errorBody = await response.json().catch(() => ({}));
         throw new Error(errorBody.detail || "Risk analizi başarısız");
       }
-      setRiskResult(await response.json());
+      const data = await response.json();
+      if (data.puq_async_pending && data.puq_run_id) {
+        setPendingRun(data);
+      } else {
+        setRiskResult(data);
+      }
     } catch (requestError) {
       setError(translateValue(requestError.message) || "Risk analizi tamamlanamadı.");
     } finally {
       setLoading(false);
     }
   }
+
+  async function pollPuqRun(runInfo = pendingRun) {
+    if (!runInfo?.puq_run_id || !doctor || !patient) return;
+    try {
+      const response = await fetch(`${API_BASE}/puq-runs/${runInfo.puq_run_id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient_id: patient.id,
+          doctor_id: doctor.id,
+          new_medicine: medicine
+        })
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.detail || "Puq.ai sonucu kontrol edilemedi");
+      }
+      const data = await response.json();
+      if (data.overall_risk_score !== undefined) {
+        setPendingRun(null);
+        setRiskResult(data);
+      } else if (data.puq_async_pending === false) {
+        setPendingRun(null);
+        const candidate = data.puq_output_candidates?.[0];
+        const candidateHint = candidate ? ` JSON adayi: ${candidate.path}` : "";
+        setError(`${translateValue(data.message || "Puq.ai sonucu yapilandirilmis risk JSON'u icermiyor.")}${candidateHint}`);
+      } else {
+        setPendingRun({ ...runInfo, ...data });
+      }
+    } catch (requestError) {
+      setError(translateValue(requestError.message) || "Puq.ai sonucu kontrol edilemedi.");
+    }
+  }
+
+  useEffect(() => {
+    if (!pendingRun?.puq_run_id || riskResult) return;
+    const intervalId = window.setInterval(() => {
+      pollPuqRun(pendingRun);
+    }, 2500);
+    return () => window.clearInterval(intervalId);
+  }, [pendingRun?.puq_run_id, pendingRun?.puq_status, riskResult, doctor?.id, patient?.id, medicine.medicine_name, medicine.dosage, medicine.frequency]);
 
   async function saveDecision(decision) {
     if (!riskResult || !doctor || !patient) return;
@@ -308,7 +358,7 @@ export default function App() {
                   loading={loading}
                   error={error}
                 />
-                <RiskResult result={riskResult} loading={loading} />
+                <RiskResult result={riskResult} loading={loading || Boolean(pendingRun)} pendingRun={pendingRun} />
                 <DecisionPanel result={riskResult} onDecision={saveDecision} message={decisionMessage} loading={loading} />
               </>
             )}
@@ -567,14 +617,25 @@ function MedicineForm({ medicine, medicationCatalog, setMedicine, onSubmit, load
   );
 }
 
-function RiskResult({ result, loading }) {
+function RiskResult({ result, loading, pendingRun }) {
   if (!result) {
     return (
       <section className="panel" id="result">
         <div className="empty-state">
-          <ShieldAlert size={28} />
-          <strong>Puq.ai Risk Sonucu</strong>
-          <span>Yapılandırılmış JSON risk desteğini görmek için yeni bir ilacı analiz edin.</span>
+          {pendingRun || loading ? (
+            <>
+              <div className="loading-ring" />
+              <strong>Puq.ai analizi bekleniyor</strong>
+              <span>Workflow sonucu hazir olana kadar bekleniyor. Yerel guvenlik sonucu gosterilmiyor.</span>
+              {pendingRun?.puq_run_id && <small>Run ID: {pendingRun.puq_run_id}</small>}
+            </>
+          ) : (
+            <>
+              <ShieldAlert size={28} />
+              <strong>Puq.ai Risk Sonucu</strong>
+              <span>Yapılandırılmış JSON risk desteğini görmek için yeni bir ilacı analiz edin.</span>
+            </>
+          )}
         </div>
       </section>
     );
@@ -592,7 +653,22 @@ function RiskResult({ result, loading }) {
         </div>
         <RiskBadge level={result.overall_risk_level} />
       </div>
-      {result.is_fallback && <div className="alert warning"><AlertTriangle size={18} /> {translateValue(result.warning)}</div>}
+      {result.is_fallback && (
+        <div className="alert warning fallback-warning">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>{translateValue(result.warning)}</strong>
+            {result.puq_error_detail && (
+              <small>
+                Puq.ai durum: {translateValue(result.puq_error_type || "bilinmiyor")} - {translateValue(result.puq_error_detail)}
+              </small>
+            )}
+            {result.puq_raw_response_preview && (
+              <small>Ham cevap onizleme: {result.puq_raw_response_preview}</small>
+            )}
+          </div>
+        </div>
+      )}
       {requiresReview && (
         <div className={`critical-warning ${String(result.overall_risk_level).toLowerCase()}`}>
           <AlertTriangle size={24} />
@@ -866,7 +942,20 @@ function translateValue(value) {
     "Alcohol use": "Alkol kullanımı",
     "Multiple chronic diseases": "Çoklu kronik hastalık",
     Polypharmacy: "Çoklu ilaç kullanımı",
-    "Puq.ai service is currently unavailable. Showing fallback demo result.": "Puq.ai servisine şu anda ulaşılamıyor. Güvenli yedek sonuç gösteriliyor.",
+    "Puq.ai service is currently unavailable. Showing fallback demo result.": "Puq.ai servisine su anda ulasilamiyor. Guvenli yedek sonuc gosteriliyor.",
+    "Puq.ai workflow istegi aldi ancak beklenen yapilandirilmis JSON'u dondurmedi. Guvenli yedek sonuc gosteriliyor.": "Puq.ai workflow istegi aldi ancak beklenen yapilandirilmis JSON'u dondurmedi. Guvenli yedek sonuc gosteriliyor.",
+    "Puq.ai analizi arka planda basladi. Sonuc hazir olana kadar yerel guvenlik analizi gosteriliyor.": "Puq.ai analizi arka planda basladi. Sonuc hazir olana kadar yerel guvenlik analizi gosteriliyor.",
+    "Puq.ai analizi henuz tamamlanmadi.": "Puq.ai analizi henuz tamamlanmadi.",
+    "Puq.ai calisti ancak execution detayinda yapilandirilmis risk JSON'u bulunamadi.": "Puq.ai calisti ancak execution detayinda yapilandirilmis risk JSON'u bulunamadi.",
+    "Puq.ai run basladi ancak execution sonucu backend tarafindan okunamadi. PUQ_API_KEY gercek API key olmali ve execution endpoint erisimi acik olmali.": "Puq.ai run basladi ancak execution sonucu backend tarafindan okunamadi. PUQ_API_KEY gercek API key olmali ve execution endpoint erisimi acik olmali.",
+    "PUQ_API_KEY is not configured": "PUQ_API_KEY ayarlanmamis. .env dosyasina gercek Puq.ai API key yazilmali.",
+    response_format: "Cevap formati hatasi",
+    request_failed: "Istek basarisiz",
+    unexpected: "Beklenmeyen hata",
+    "Puq.ai yaniti beklenen yapilandirilmis ilac risk JSON'unu icermiyor.": "Puq.ai yaniti beklenen yapilandirilmis ilac risk JSON'unu icermiyor.",
+    "Puq.ai yanitinda overall_risk_score veya overall_risk_level alani eksik.": "Puq.ai yanitinda overall_risk_score veya overall_risk_level alani eksik.",
+    "Puq.ai response did not contain structured medication risk JSON": "Puq.ai yaniti beklenen yapilandirilmis ilac risk JSON'unu icermiyor.",
+    "Puq.ai response is missing overall_risk_score and overall_risk_level": "Puq.ai yanitinda overall_risk_score veya overall_risk_level alani eksik.",
     "This result must be reviewed by a doctor before any clinical action. Lower-risk alternatives are shown only as decision support options.": "Bu sonuç herhangi bir klinik işlemden önce doktor tarafından değerlendirilmelidir. Daha düşük riskli alternatifler yalnızca karar desteği amacıyla gösterilir.",
     "Doctor review is required before any clinical action.": "Herhangi bir klinik işlemden önce doktor değerlendirmesi gereklidir.",
     "Monitor clinically and verify patient-specific contraindications.": "Klinik olarak izleyin ve hastaya özel kontrendikasyonları doğrulayın.",

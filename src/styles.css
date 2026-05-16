@@ -722,6 +722,26 @@ button:disabled {
   color: var(--muted);
 }
 
+.empty-state small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.loading-ring {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 5px solid #d7e7ee;
+  border-top-color: var(--teal);
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .result-grid {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
@@ -851,6 +871,38 @@ th {
 .alert.success {
   background: #ddf7e8;
   color: #0d6b40;
+}
+
+.alert.info {
+  background: #e7f3ff;
+  color: #12446d;
+}
+
+.fallback-warning {
+  align-items: flex-start;
+}
+
+.fallback-warning div {
+  display: grid;
+  gap: 4px;
+}
+
+.fallback-warning small {
+  font-size: 12px;
+  line-height: 1.4;
+  color: inherit;
+  opacity: 0.88;
+}
+
+.inline-action {
+  justify-self: start;
+  margin-top: 4px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 8px;
+  color: white;
+  background: #2563eb;
+  font-weight: 850;
 }
 
 .critical-warning {

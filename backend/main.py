@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -22,8 +23,15 @@ from backend.database import (
 )
 from backend.services.puq_ai_service import (
     MedicationCatalogError,
+    PuqAIAsyncRunStarted,
+    PuqAIResponseFormatError,
+    PuqAIServiceError,
     call_puq_webhook,
+    extract_structured_result,
+    find_structured_result_candidates,
+    get_puq_execution,
     get_fallback_puq_response,
+    normalize_puq_response,
     prepare_puq_payload,
     supported_medications,
 )
@@ -42,6 +50,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+PUQ_RUN_PAYLOADS: dict[str, dict] = {}
+PUQ_RUN_RESULTS: dict[str, dict] = {}
+PUQ_CONTEXT_RESULTS: dict[str, dict] = {}
 
 
 class NewMedicine(BaseModel):
@@ -103,6 +115,73 @@ class DoctorDecisionRequest(BaseModel):
     risk_score: int
     risk_level: Literal["Low", "Medium", "High"]
     decision: Literal["approve", "reject", "modify", "request_further_test"]
+
+
+class PuqRunResultQuery(BaseModel):
+    patient_id: int
+    doctor_id: int | None = None
+    new_medicine: NewMedicine
+
+
+def puq_context_key(patient_id: int, new_medicine: dict) -> str:
+    return "|".join(
+        [
+            str(patient_id),
+            str(new_medicine.get("medicine_name", "")).strip().lower(),
+            str(new_medicine.get("dosage", "")).strip().lower(),
+            str(new_medicine.get("frequency", "")).strip().lower(),
+        ]
+    )
+
+
+def puq_loose_context_key(patient_id: int, medicine_name: str) -> str:
+    return f"{patient_id}|{medicine_name.strip().lower()}"
+
+
+def store_puq_result(run_id: str | None, result: dict, puq_payload: dict) -> None:
+    result["puq_async_pending"] = False
+    result["puq_status"] = "CALLBACK_RECEIVED"
+    result["clinical_decision_support_only"] = True
+    result["puq_callback_received_at"] = datetime.now(timezone.utc).isoformat()
+    if run_id:
+        result["puq_run_id"] = run_id
+        PUQ_RUN_RESULTS[run_id] = result
+    patient_id = int(result.get("patient_id") or puq_payload["patient_data"]["id"])
+    new_medicine = puq_payload["new_medicine"]
+    PUQ_CONTEXT_RESULTS[puq_context_key(patient_id, new_medicine)] = result
+    PUQ_CONTEXT_RESULTS[puq_loose_context_key(patient_id, result.get("new_medicine", new_medicine["medicine_name"]))] = result
+
+
+def build_payload_for_callback(extracted: dict, raw_body: object) -> tuple[str | None, dict]:
+    run_id = None
+    if isinstance(raw_body, dict):
+        run_id = raw_body.get("run_id") or raw_body.get("run_uid") or raw_body.get("execution_id")
+    run_id = run_id or extracted.get("run_id") or extracted.get("run_uid")
+
+    if run_id and run_id in PUQ_RUN_PAYLOADS:
+        return str(run_id), PUQ_RUN_PAYLOADS[str(run_id)]
+
+    patient_id = int(extracted.get("patient_id") or 0)
+    if not patient_id:
+        raise HTTPException(status_code=400, detail="Callback JSON icinde patient_id bulunamadi.")
+    patient = get_patient(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Callback hasta kaydi bulunamadi.")
+    medicine_name = extracted.get("new_medicine")
+    if isinstance(medicine_name, dict):
+        medicine_name = medicine_name.get("medicine_name")
+    if not medicine_name:
+        raise HTTPException(status_code=400, detail="Callback JSON icinde new_medicine bulunamadi.")
+    puq_payload = prepare_puq_payload(
+        patient,
+        get_patient_medicines(patient_id),
+        {
+            "medicine_name": str(medicine_name),
+            "dosage": "Not specified",
+            "frequency": "Not specified",
+        },
+    )
+    return str(run_id) if run_id else None, puq_payload
 
 
 @app.on_event("startup")
@@ -202,19 +281,150 @@ async def analyze_new_medicine(payload: AnalyzeNewMedicineRequest) -> dict:
 
     try:
         result = await call_puq_webhook(puq_payload)
-    except Exception:
+    except PuqAIAsyncRunStarted as exc:
+        PUQ_RUN_PAYLOADS[exc.run_id] = puq_payload
+        return {
+            "puq_async_pending": True,
+            "puq_run_id": exc.run_id,
+            "puq_workflow_id": exc.workflow_id,
+            "puq_raw_response_preview": exc.raw_preview,
+            "message": "Puq.ai analizi devam ediyor. Sonuc bekleniyor.",
+            "clinical_decision_support_only": True,
+        }
+    except PuqAIResponseFormatError as exc:
         result = get_fallback_puq_response(
             payload.patient_id,
             new_medicine,
             patient_data=patient,
             current_medications=current_medications,
         )
+        result["puq_error_type"] = "response_format"
+        result["puq_error_detail"] = str(exc)
+        result["puq_raw_response_preview"] = exc.raw_preview
+        result["warning"] = (
+            "Puq.ai workflow istegi aldi ancak beklenen yapilandirilmis JSON'u dondurmedi. "
+            "Guvenli yedek sonuc gosteriliyor."
+        )
+    except PuqAIServiceError as exc:
+        result = get_fallback_puq_response(
+            payload.patient_id,
+            new_medicine,
+            patient_data=patient,
+            current_medications=current_medications,
+        )
+        result["puq_error_type"] = "request_failed"
+        result["puq_error_detail"] = str(exc)
+    except Exception as exc:
+        result = get_fallback_puq_response(
+            payload.patient_id,
+            new_medicine,
+            patient_data=patient,
+            current_medications=current_medications,
+        )
+        result["puq_error_type"] = "unexpected"
+        result["puq_error_detail"] = str(exc)
 
     result["doctor_review_required"] = result.get("overall_risk_level") in {"Medium", "High"} or any(
         item.get("doctor_review_required") for item in result.get("detected_interactions", [])
     )
     result["clinical_decision_support_only"] = True
     return result
+
+
+@app.post("/puq-runs/{run_id}")
+async def puq_run_status(run_id: str, payload: PuqRunResultQuery) -> dict:
+    patient = get_patient(payload.patient_id, doctor_id=payload.doctor_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Hasta bulunamadi")
+
+    current_medications = get_patient_medicines(payload.patient_id)
+    new_medicine = payload.new_medicine.model_dump()
+
+    if run_id in PUQ_RUN_RESULTS:
+        return PUQ_RUN_RESULTS[run_id]
+    context_result = PUQ_CONTEXT_RESULTS.get(puq_context_key(payload.patient_id, new_medicine))
+    context_result = context_result or PUQ_CONTEXT_RESULTS.get(
+        puq_loose_context_key(payload.patient_id, new_medicine["medicine_name"])
+    )
+    if context_result:
+        return context_result
+
+    try:
+        puq_payload = prepare_puq_payload(patient, current_medications, new_medicine)
+    except MedicationCatalogError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    try:
+        execution = await get_puq_execution(run_id)
+    except PuqAIServiceError as exc:
+        return {
+            "puq_async_pending": True,
+            "puq_status": "EXECUTION_LOOKUP_FAILED",
+            "puq_run_id": run_id,
+            "message": (
+                "Puq.ai run basladi ancak execution sonucu backend tarafindan okunamadi. "
+                "PUQ_API_KEY gercek API key olmali ve execution endpoint erisimi acik olmali."
+            ),
+            "puq_error_detail": str(exc),
+        }
+
+    status = str(execution.get("status", "UNKNOWN")).upper()
+    extracted = extract_structured_result(execution)
+
+    if extracted:
+        result = normalize_puq_response(extracted, puq_payload)
+        result["puq_async_pending"] = False
+        result["puq_status"] = status
+        result["puq_run_id"] = run_id
+        result["clinical_decision_support_only"] = True
+        return result
+
+    if status not in {"SUCCEEDED", "SUCCESS", "COMPLETED", "FINISHED"}:
+        return {
+            "puq_async_pending": status in {"PENDING", "RUNNING", "PAUSED"},
+            "puq_status": status,
+            "puq_run_id": run_id,
+            "message": "Puq.ai analizi henuz tamamlanmadi.",
+            "puq_output_candidates": find_structured_result_candidates(execution),
+        }
+
+    return {
+        "puq_async_pending": False,
+        "puq_status": status,
+        "puq_run_id": run_id,
+        "message": (
+            "Puq.ai async run_id dondurdu. .env icindeki PUQ_WEBHOOK_URL muhtemelen Async webhook endpoint. "
+            "Puq.ai Webhook menüsünden Sync endpoint'i kopyalayip PUQ_WEBHOOK_URL olarak kullanmalisin; "
+            "Webhook Response adimi da Agent/Router sonrasinda Agent output JSON'unu dondurmeli."
+        ),
+        "puq_raw_response_preview": str(execution)[:800],
+        "puq_output_candidates": find_structured_result_candidates(execution),
+    }
+
+
+@app.post("/puq-callback")
+async def puq_callback(request: Request) -> dict:
+    try:
+        raw_body: object = await request.json()
+    except Exception:
+        raw_body = (await request.body()).decode("utf-8", errors="replace")
+
+    extracted = extract_structured_result(raw_body)
+    if not extracted:
+        raise HTTPException(
+            status_code=400,
+            detail="Callback beklenen yapilandirilmis risk JSON'unu icermiyor.",
+        )
+
+    run_id, puq_payload = build_payload_for_callback(extracted, raw_body)
+    result = normalize_puq_response(extracted, puq_payload)
+    store_puq_result(run_id, result, puq_payload)
+    return {
+        "status": "saved",
+        "puq_run_id": run_id,
+        "overall_risk_score": result["overall_risk_score"],
+        "overall_risk_level": result["overall_risk_level"],
+    }
 
 
 @app.post("/doctor-decision")
