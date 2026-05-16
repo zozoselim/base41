@@ -21,9 +21,11 @@ from backend.database import (
     save_doctor_decision,
 )
 from backend.services.puq_ai_service import (
+    MedicationCatalogError,
     call_puq_webhook,
     get_fallback_puq_response,
     prepare_puq_payload,
+    supported_medications,
 )
 
 
@@ -180,6 +182,11 @@ def patient_medicines(patient_id: int) -> list[dict]:
     return get_patient_medicines(patient_id)
 
 
+@app.get("/medication-catalog")
+def medication_catalog() -> list[dict]:
+    return supported_medications()
+
+
 @app.post("/analyze-new-medicine")
 async def analyze_new_medicine(payload: AnalyzeNewMedicineRequest) -> dict:
     patient = get_patient(payload.patient_id, doctor_id=payload.doctor_id)
@@ -188,7 +195,10 @@ async def analyze_new_medicine(payload: AnalyzeNewMedicineRequest) -> dict:
 
     current_medications = get_patient_medicines(payload.patient_id)
     new_medicine = payload.new_medicine.model_dump()
-    puq_payload = prepare_puq_payload(patient, current_medications, new_medicine)
+    try:
+        puq_payload = prepare_puq_payload(patient, current_medications, new_medicine)
+    except MedicationCatalogError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
     try:
         result = await call_puq_webhook(puq_payload)

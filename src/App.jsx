@@ -7,7 +7,6 @@ import {
   FlaskConical,
   HeartPulse,
   LogIn,
-  LogOut,
   Search,
   ShieldAlert,
   Stethoscope,
@@ -18,23 +17,24 @@ import {
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const decisionLabels = {
-  approve: "Onay",
-  reject: "Ret",
-  modify: "Düzenleme",
-  request_further_test: "Ek tetkik isteği"
+  approve: "Approve",
+  reject: "Reject",
+  modify: "Modify",
+  request_further_test: "Request Further Test"
 };
 
 const emptyMedicine = {
   medicine_name: "Aspirin",
-  dosage: "100 mg",
-  frequency: "Günde bir kez"
+  dosage: "100mg",
+  frequency: "Once daily"
 };
 
 export default function App() {
   const [doctors, setDoctors] = useState([]);
   const [patients, setPatients] = useState([]);
-  const [session, setSession] = useState(null);
-  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [medicationCatalog, setMedicationCatalog] = useState([]);
+  const [doctor, setDoctor] = useState(null);
+  const [selectedPatientId, setSelectedPatientId] = useState(1);
   const [patient, setPatient] = useState(null);
   const [search, setSearch] = useState("");
   const [medicine, setMedicine] = useState(emptyMedicine);
@@ -42,57 +42,32 @@ export default function App() {
   const [decisionMessage, setDecisionMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const doctor = session?.role === "doctor" ? session.user : null;
-  const loggedPatient = session?.role === "patient" ? session.user : null;
 
   useEffect(() => {
     async function loadInitialData() {
       try {
-        const doctorResponse = await fetch(`${API_BASE}/doctors`);
-        if (!doctorResponse.ok) throw new Error("Doktorlar yüklenemedi");
+        const [doctorResponse, patientResponse] = await Promise.all([
+          fetch(`${API_BASE}/doctors`),
+          fetch(`${API_BASE}/patients`)
+        ]);
+        const catalogResponse = await fetch(`${API_BASE}/medication-catalog`);
         setDoctors(await doctorResponse.json());
+        setPatients(await patientResponse.json());
+        setMedicationCatalog(await catalogResponse.json());
       } catch {
-        setError("Backend API'ye ulaşılamıyor. Önce FastAPI'yi başlatın.");
+        setError("Backend API is not reachable. Start FastAPI on port 8000.");
       }
     }
     loadInitialData();
   }, []);
 
   useEffect(() => {
-    if (!doctor) {
-      setPatients([]);
-      setSelectedPatientId(null);
-      setPatient(null);
-      return;
-    }
-    async function loadDoctorPatients() {
-      setLoading(true);
-      setError("");
-      try {
-        const response = await fetch(`${API_BASE}/patients?doctor_id=${doctor.id}`);
-        if (!response.ok) throw new Error("Hastalar yüklenemedi");
-        const data = await response.json();
-        setPatients(data);
-        setSelectedPatientId(data[0]?.id ?? null);
-        setPatient(null);
-      } catch {
-        setError("Doktora bağlı hastalar yüklenemedi.");
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadDoctorPatients();
-  }, [doctor?.id]);
-
-  useEffect(() => {
-    if (!doctor || !selectedPatientId) return;
+    if (!doctor) return;
     async function loadPatient() {
       setRiskResult(null);
       setDecisionMessage("");
-      const response = await fetch(`${API_BASE}/patients/${selectedPatientId}?doctor_id=${doctor.id}`);
-      if (response.ok) {
-        setPatient(await response.json());
-      }
+      const response = await fetch(`${API_BASE}/patients/${selectedPatientId}`);
+      setPatient(await response.json());
     }
     loadPatient();
   }, [selectedPatientId, doctor]);
@@ -100,7 +75,7 @@ export default function App() {
   const filteredPatients = useMemo(() => {
     const term = search.toLowerCase();
     return patients.filter((item) =>
-      [item.name, item.cancer_status, item.diagnoses]
+      [item.name, item.cancer_status, item.diagnoses, item.risk_level]
         .join(" ")
         .toLowerCase()
         .includes(term)
@@ -108,44 +83,16 @@ export default function App() {
   }, [patients, search]);
 
   const stats = useMemo(() => {
-    const cancerDiagnosed = patients.filter((item) => hasCancerDiagnosis(item)).length;
+    const highRisk = patients.filter((item) => estimatePatientRisk(item) === "High").length;
     const pending = patients.filter((item) => item.cancer_stage === "Stage III" || item.chronic_disease_count >= 4).length;
-    return { total: patients.length, cancerDiagnosed, pending };
+    return { total: patients.length, highRisk, pending };
   }, [patients]);
-
-  async function loginUser(credentials) {
-    setLoading(true);
-    setError("");
-    try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(credentials)
-      });
-      if (!response.ok) throw new Error("Giriş başarısız");
-      setSession(await response.json());
-    } catch {
-      setError("TC kimlik numarası veya şifre hatalı.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function logout() {
-    setSession(null);
-    setPatients([]);
-    setPatient(null);
-    setSelectedPatientId(null);
-    setRiskResult(null);
-    setDecisionMessage("");
-    setError("");
-  }
 
   async function analyzeRisk(event) {
     event.preventDefault();
-    if (!doctor || !patient) return;
     setLoading(true);
     setError("");
+    setRiskResult(null);
     setDecisionMessage("");
     try {
       const response = await fetch(`${API_BASE}/analyze-new-medicine`, {
@@ -153,14 +100,16 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patient_id: patient.id,
-          doctor_id: doctor.id,
           new_medicine: medicine
         })
       });
-      if (!response.ok) throw new Error("Risk analizi başarısız");
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.detail || "Risk analysis failed");
+      }
       setRiskResult(await response.json());
-    } catch {
-      setError("Risk analizi tamamlanamadı.");
+    } catch (requestError) {
+      setError(requestError.message || "Risk analysis could not be completed.");
     } finally {
       setLoading(false);
     }
@@ -183,21 +132,17 @@ export default function App() {
           decision
         })
       });
-      if (!response.ok) throw new Error("Karar kaydedilemedi");
-      setDecisionMessage(`${decisionLabels[decision]} doktor kontrollü inceleme için kaydedildi.`);
+      if (!response.ok) throw new Error("Decision save failed");
+      setDecisionMessage(`${decisionLabels[decision]} saved for doctor-controlled review.`);
     } catch {
-      setDecisionMessage("Karar kaydedilemedi.");
+      setDecisionMessage("Decision could not be saved.");
     } finally {
       setLoading(false);
     }
   }
 
-  if (!session) {
-    return <LoginScreen onLogin={loginUser} loading={loading} error={error} />;
-  }
-
-  if (loggedPatient) {
-    return <PatientPortal patient={loggedPatient} onLogout={logout} />;
+  if (!doctor) {
+    return <LoginScreen doctors={doctors} onEnter={setDoctor} error={error} />;
   }
 
   return (
@@ -209,21 +154,21 @@ export default function App() {
           </div>
           <div>
             <h1>OncoSafe Vision AI</h1>
-            <p>Yalnızca klinik karar desteği</p>
+            <p>Clinical decision support only</p>
           </div>
         </div>
         <nav className="nav">
-          <a href="#dashboard"><Activity size={18} /> Panel</a>
-          <a href="#profile"><UserRound size={18} /> Hasta Profili</a>
-          <a href="#medicine"><FlaskConical size={18} /> Yeni İlaç</a>
-          <a href="#result"><ShieldAlert size={18} /> Puq.ai Sonucu</a>
-          <a href="#decision"><ClipboardCheck size={18} /> Doktor Kararı</a>
+          <a href="#dashboard"><Activity size={18} /> Dashboard</a>
+          <a href="#profile"><UserRound size={18} /> Patient Profile</a>
+          <a href="#medicine"><FlaskConical size={18} /> New Medicine</a>
+          <a href="#result"><ShieldAlert size={18} /> Puq.ai Result</a>
+          <a href="#decision"><ClipboardCheck size={18} /> Doctor Decision</a>
         </nav>
         <div className="doctor-card">
-          <span>Giriş yapan doktor</span>
+          <span>Logged in doctor</span>
           <strong>{doctor.name}</strong>
-          <small>{translateValue(doctor.specialty)}</small>
-          <button onClick={logout}><LogOut size={16} /> Çıkış yap</button>
+          <small>{doctor.specialty}</small>
+          <button onClick={() => setDoctor(null)}>Switch doctor</button>
         </div>
         <SafetyNotice compact />
       </aside>
@@ -231,66 +176,73 @@ export default function App() {
       <main>
         <section className="hero" id="dashboard">
           <div>
-            <p className="eyebrow">Puq.ai İlaç Güvenliği Ajanı + SQLite + FastAPI</p>
-            <h2>İlaç riski incelemesi için doktor paneli</h2>
+            <p className="eyebrow">Puq.ai Medication Safety Agent + SQLite + FastAPI</p>
+            <h2>Doctor dashboard for medicine risk review</h2>
             <p>
-              Sentetik bir hasta seçin, yeni ilacı girin ve yapılandırılmış ilaç riski desteğini inceleyin.
-              Orta ve yüksek risk her zaman doktor değerlendirmesi gerektirir.
+              Select a synthetic patient, enter a new medicine, and review structured medication risk support.
+              Medium and High risk always require doctor review.
             </p>
           </div>
           <div className="integration-card">
             <CheckCircle2 size={22} />
             <div>
-              <strong>Puq.ai entegrasyonu hazır</strong>
-              <span>Yapılandırıldıysa gerçek webhook, yoksa güvenli varsayılan yanıt kullanılır.</span>
+              <strong>Puq.ai integration ready</strong>
+              <span>Real webhook if configured, safe fallback demo if unavailable.</span>
             </div>
           </div>
         </section>
 
         <section className="workspace">
           <div className="stat-grid">
-            <Stat title="Toplam hasta" value={stats.total} />
-            <Stat title="Kanser tanılı hasta" value={stats.cancerDiagnosed} tone="warning" />
-            <Stat title="Öncelikli takip" value={stats.pending} tone="danger" />
-            <Stat title="Puq.ai durumu" value="Webhook" tone="success" />
+            <Stat title="Total patients" value={stats.total} />
+            <Stat title="High-risk patients" value={stats.highRisk} tone="danger" />
+            <Stat title="Pending doctor decisions" value={stats.pending} tone="warning" />
+            <Stat title="Puq.ai status" value="Webhook" tone="success" />
           </div>
 
           <div className="dashboard-grid">
             <section className="panel patient-list">
               <div className="panel-heading">
                 <div>
-                  <h3>Hasta listesi</h3>
-                  <p>Sentetik hastalarda arama ve filtreleme</p>
+                  <h3>Patient list</h3>
+                  <p>Search/filter synthetic patients</p>
                 </div>
               </div>
               <label className="search-box">
                 <Search size={18} />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Hasta, hastalık veya tanı ara" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search patients, cancer status, diagnosis" />
               </label>
               <div className="patient-scroll">
-                {filteredPatients.length === 0 && (
-                  <div className="empty-list">Bu doktora atanmış hasta bulunmuyor.</div>
-                )}
-                {filteredPatients.map((item) => (
-                  <button
-                    className={`patient-row ${selectedPatientId === item.id ? "active" : ""}`}
-                    key={item.id}
-                    onClick={() => setSelectedPatientId(item.id)}
-                  >
-                    <span>
-                      <strong>{item.name}</strong>
-                      <small className="patient-age">{item.age} yaş{hasCancerDiagnosis(item) && ` | ${translateValue(item.cancer_status)}`}</small>
-                      <small className="patient-diagnoses">{patientDiseaseSummary(item)}</small>
-                    </span>
-                  </button>
-                ))}
+                {filteredPatients.map((item) => {
+                  const level = estimatePatientRisk(item);
+                  return (
+                    <button
+                      className={`patient-row ${selectedPatientId === item.id ? "active" : ""}`}
+                      key={item.id}
+                      onClick={() => setSelectedPatientId(item.id)}
+                    >
+                      <span>
+                        <strong>{item.name}</strong>
+                        <small>{item.age} yrs | {item.cancer_status}</small>
+                      </span>
+                      <RiskBadge level={level} />
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
             {patient && (
               <>
                 <PatientProfile patient={patient} />
-                <MedicineForm medicine={medicine} setMedicine={setMedicine} onSubmit={analyzeRisk} loading={loading} error={error} />
+                <MedicineForm
+                  medicine={medicine}
+                  medicationCatalog={medicationCatalog}
+                  setMedicine={setMedicine}
+                  onSubmit={analyzeRisk}
+                  loading={loading}
+                  error={error}
+                />
                 <RiskResult result={riskResult} loading={loading} />
                 <DecisionPanel result={riskResult} onDecision={saveDecision} message={decisionMessage} loading={loading} />
               </>
@@ -302,213 +254,80 @@ export default function App() {
   );
 }
 
-function LoginScreen({ onLogin, loading, error }) {
-  const [role, setRole] = useState("doctor");
-  const [credentials, setCredentials] = useState({ tc_identity: "10000000001", password: "demo123" });
-
-  function switchRole(nextRole) {
-    setRole(nextRole);
-    setCredentials({
-      tc_identity: nextRole === "doctor" ? "10000000001" : "20000000001",
-      password: "demo123"
-    });
-  }
-
-  function submitLogin(event) {
-    event.preventDefault();
-    onLogin({ role, ...credentials });
-  }
-
+function LoginScreen({ doctors, onEnter, error }) {
+  const [selected, setSelected] = useState(null);
   return (
     <div className="login-page">
       <div className="login-hero">
-        <p className="eyebrow">Klinik ilaç güvenliği platformu</p>
-        <h1>OncoSafe Vision</h1>
+        <p className="eyebrow">Healthcare hackathon MVP</p>
+        <h1>OncoSafe Vision AI</h1>
         <p>
-          Hasta tanıları, mevcut tedaviler ve ilaç etkileşimlerini tek bir güvenli çalışma alanında birleştirir.
-          Doktorlara daha hızlı, tutarlı ve izlenebilir karar desteği sunar.
+          Clinical decision support prototype for doctors evaluating new medicine risk in patients with polypharmacy.
         </p>
-        <div className="login-feature-grid">
-          <div>
-            <Stethoscope size={20} />
-            <strong>Hekime özel çalışma alanı</strong>
-            <span>Atanmış hastalar, tanı kodları ve ilaç geçmişi düzenli bir klinik akış içinde yönetilir.</span>
-          </div>
-          <div>
-            <UserRound size={20} />
-            <strong>Risk odaklı hasta güvenliği</strong>
-            <span>Yeni ilaç girişleri hasta profiliyle birlikte değerlendirilir; kritik durumlar doktor incelemesi için öne çıkarılır.</span>
-          </div>
-        </div>
         <SafetyNotice />
       </div>
       <section className="login-panel">
-        <div className="auth-header">
-          <div>
-            <h2>Hesap Girişi</h2>
-            <p>TC kimlik numaranız ve şifrenizle güvenli oturum açın.</p>
-          </div>
-          <span className="auth-status">Güvenli giriş</span>
-        </div>
-        <div className="role-toggle">
-          <button className={role === "doctor" ? "active" : ""} onClick={() => switchRole("doctor")}>
-            <Stethoscope size={18} /> Doktor
-          </button>
-          <button className={role === "patient" ? "active" : ""} onClick={() => switchRole("patient")}>
-            <UserRound size={18} /> Hasta
-          </button>
-        </div>
+        <h2>Doctor role entry</h2>
+        <p>Select a synthetic doctor profile to enter the dashboard.</p>
         {error && <div className="alert danger">{error}</div>}
-        <form className="auth-form" onSubmit={submitLogin}>
-          <label>
-            TC Kimlik Numarası
-            <input
-              value={credentials.tc_identity}
-              onChange={(event) => setCredentials({ ...credentials, tc_identity: event.target.value })}
-              inputMode="numeric"
-              maxLength={11}
-              required
-            />
-          </label>
-          <label>
-            Şifre
-            <input
-              type="password"
-              value={credentials.password}
-              onChange={(event) => setCredentials({ ...credentials, password: event.target.value })}
-              required
-            />
-          </label>
-          <button className="primary-action auth-submit" disabled={loading}>
-            <LogIn size={18} /> {loading ? "Giriş yapılıyor..." : `${roleLabel(role)} alanına gir`}
-          </button>
-        </form>
+        <div className="doctor-grid">
+          {doctors.map((doctor) => (
+            <button
+              className={`doctor-option ${selected?.id === doctor.id ? "active" : ""}`}
+              key={doctor.id}
+              onClick={() => setSelected(doctor)}
+            >
+              <Stethoscope size={20} />
+              <strong>{doctor.name}</strong>
+              <span>{doctor.specialty}</span>
+              <small>{doctor.hospital} | {doctor.experience_years} years</small>
+            </button>
+          ))}
+        </div>
+        <button className="primary-action" disabled={!selected} onClick={() => onEnter(selected)}>
+          <LogIn size={18} /> Enter doctor dashboard
+        </button>
       </section>
     </div>
   );
 }
 
-function PatientPortal({ patient, onLogout }) {
-  const safePatient = { ...patient, current_medications: patient.current_medications || [] };
-  const factors = riskFactors(safePatient, safePatient.current_medications);
-  return (
-    <div className="app-shell patient-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">
-            <HeartPulse size={24} />
-          </div>
-          <div>
-            <h1>OncoSafe Vision AI</h1>
-            <p>Hasta profili erişimi</p>
-          </div>
-        </div>
-        <nav className="nav">
-          <a href="#profile"><UserRound size={18} /> Profilim</a>
-          <a href="#medicines"><FlaskConical size={18} /> İlaçlar</a>
-        </nav>
-        <div className="doctor-card">
-          <span>Giriş yapan hasta</span>
-          <strong>{safePatient.name}</strong>
-          <small>Atanan doktor #{safePatient.doctor_id}</small>
-          <button onClick={onLogout}><LogOut size={16} /> Çıkış yap</button>
-        </div>
-        <SafetyNotice compact />
-      </aside>
-      <main>
-        <section className="hero patient-hero">
-          <div>
-            <p className="eyebrow">Hasta görünümü</p>
-            <h2>Salt okunur hasta profili</h2>
-            <p>
-              Hastalar sentetik profillerini ve ilaç listelerini görüntüleyebilir. Klinik işlemler doktor kontrolünde kalır.
-            </p>
-          </div>
-          <div className="integration-card">
-            <CheckCircle2 size={22} />
-            <div>
-              <strong>Güvenli rol ayrımı</strong>
-              <span>Bu hesap yalnızca kendi hasta kaydını görüntüleyebilir.</span>
-            </div>
-          </div>
-        </section>
-        <section className="workspace">
-          <div className="dashboard-grid patient-dashboard">
-            <PatientProfile patient={safePatient} />
-            <section className="panel" id="medicines">
-              <div className="panel-heading">
-                <div>
-                  <h3>Riskle ilişkili faktörler</h3>
-                  <p>Klinik yorum için doktor değerlendirmesi gereklidir.</p>
-                </div>
-              </div>
-              <div className="pill-list warning-list">
-                {factors.length ? factors.map((factor) => <span key={factor}>{factor}</span>) : <span>Belirgin risk faktörü saptanmadı</span>}
-              </div>
-              <SafetyNotice compact />
-            </section>
-          </div>
-        </section>
-      </main>
-    </div>
-  );
-}
-
 function PatientProfile({ patient }) {
-  const currentMedicines = (patient.current_medications || []).map((item) => ({
-    ...item,
-    frequency: translateValue(item.frequency)
-  }));
-  const diagnosisCodes = patient.diagnosis_codes || [];
-  const factors = riskFactors(patient, currentMedicines);
+  const factors = riskFactors(patient, patient.current_medications);
   return (
     <section className="panel span-2" id="profile">
       <div className="panel-heading">
         <div>
           <h3>{patient.name}</h3>
-          <p>Seçili sentetik hasta profili</p>
+          <p>Selected synthetic patient profile</p>
         </div>
-        <span className="synthetic">Sentetik</span>
+        <span className="synthetic">Synthetic</span>
       </div>
       <div className="profile-grid">
-        <Fact label="Hasta ID" value={`#${patient.id}`} />
-        {patient.doctor_id && <Fact label="Atanan doktor ID" value={`#${patient.doctor_id}`} />}
-        <Fact label="Yaş / Cinsiyet" value={`${patient.age} / ${translateValue(patient.gender)}`} />
-        <Fact label="Boy / Kilo / VKİ" value={`${patient.height_cm} cm / ${patient.weight_kg} kg / ${patient.bmi}`} />
-        <Fact label="Sigara / Alkol" value={`${translateValue(patient.smoking_status)} / ${translateValue(patient.alcohol_use)}`} />
-        {hasCancerDiagnosis(patient) && (
-          <Fact label="Kanser profili" value={`${translateValue(patient.cancer_status)} | ${translateValue(patient.cancer_stage)}`} />
-        )}
-        <Fact label="Tanılar" value={translateValue(patient.diagnoses)} />
-        <Fact label="Alerjiler" value={translateValue(patient.allergies)} />
-        <Fact label="Böbrek / Karaciğer" value={`${translateValue(patient.kidney_function_status)} / ${translateValue(patient.liver_function_status)}`} />
-        <Fact label="Laboratuvar" value={`Cr ${patient.creatinine}, ALT ${patient.alt}, AST ${patient.ast}, Hb ${patient.hemoglobin}`} />
-        <Fact label="Kronik hastalık sayısı" value={patient.chronic_disease_count} />
+        <Fact label="Patient ID" value={`#${patient.id}`} />
+        <Fact label="Age / Gender" value={`${patient.age} / ${patient.gender}`} />
+        <Fact label="Height / Weight / BMI" value={`${patient.height_cm} cm / ${patient.weight_kg} kg / ${patient.bmi}`} />
+        <Fact label="Smoking / Alcohol" value={`${patient.smoking_status} / ${patient.alcohol_use}`} />
+        <Fact label="Cancer profile" value={`${patient.cancer_status} | ${patient.cancer_stage}`} />
+        <Fact label="Diagnoses" value={patient.diagnoses} />
+        <Fact label="Allergies" value={patient.allergies} />
+        <Fact label="Kidney / Liver" value={`${patient.kidney_function_status} / ${patient.liver_function_status}`} />
+        <Fact label="Labs" value={`Cr ${patient.creatinine}, ALT ${patient.alt}, AST ${patient.ast}, Hb ${patient.hemoglobin}`} />
+        <Fact label="Chronic disease count" value={patient.chronic_disease_count} />
       </div>
-      {diagnosisCodes.length > 0 && (
-        <div className="diagnosis-code-block">
-          <h4>Tanı kodları</h4>
-          <div className="pill-list diagnosis-list">
-            {diagnosisCodes.map((item) => (
-              <span key={item.code}>{item.code} - {item.name}</span>
-            ))}
-          </div>
-        </div>
-      )}
       <div className="split-row">
         <div>
-          <h4>Mevcut ilaçlar</h4>
+          <h4>Current medicines</h4>
           <div className="pill-list">
-            {currentMedicines.length === 0 && <span>Mevcut ilaç kaydı yok</span>}
-            {currentMedicines.map((item) => (
-              <span key={item.id}>{item.medicine_name} · {item.dosage} · {item.frequency}</span>
+            {patient.current_medications.map((item) => (
+              <span key={item.id}>{item.medicine_name} - {item.dosage} - {item.frequency}</span>
             ))}
           </div>
         </div>
         <div>
-          <h4>Riskle ilişkili hasta faktörleri</h4>
+          <h4>Risk-related patient factors</h4>
           <div className="pill-list warning-list">
-            {factors.length ? factors.map((factor) => <span key={factor}>{factor}</span>) : <span>Belirgin risk faktörü saptanmadı</span>}
+            {factors.length ? factors.map((factor) => <span key={factor}>{factor}</span>) : <span>No major demo risk factor detected</span>}
           </div>
         </div>
       </div>
@@ -516,31 +335,41 @@ function PatientProfile({ patient }) {
   );
 }
 
-function MedicineForm({ medicine, setMedicine, onSubmit, loading, error }) {
+function MedicineForm({ medicine, medicationCatalog, setMedicine, onSubmit, loading, error }) {
   return (
     <section className="panel" id="medicine">
       <div className="panel-heading">
         <div>
-          <h3>Yeni ilaç girişi</h3>
-          <p>Puq.ai risk analizi için ilaç bilgilerini girin</p>
+          <h3>New medicine input</h3>
+          <p>Enter medicine details for Puq.ai risk analysis</p>
         </div>
       </div>
       <form className="medicine-form" onSubmit={onSubmit}>
         <label>
-          İlaç adı
-          <input value={medicine.medicine_name} onChange={(event) => setMedicine({ ...medicine, medicine_name: event.target.value })} required />
+          Medicine name
+          <input
+            list="medication-catalog"
+            value={medicine.medicine_name}
+            onChange={(event) => setMedicine({ ...medicine, medicine_name: event.target.value })}
+            required
+          />
+          <datalist id="medication-catalog">
+            {medicationCatalog.map((item) => (
+              <option value={item.medicine_name} key={item.medicine_name} />
+            ))}
+          </datalist>
         </label>
         <label>
-          Doz
+          Dosage
           <input value={medicine.dosage} onChange={(event) => setMedicine({ ...medicine, dosage: event.target.value })} required />
         </label>
         <label>
-          Kullanım sıklığı
+          Frequency
           <input value={medicine.frequency} onChange={(event) => setMedicine({ ...medicine, frequency: event.target.value })} required />
         </label>
         {error && <div className="alert danger">{error}</div>}
         <button className="primary-action" disabled={loading}>
-          <ShieldAlert size={18} /> {loading ? "Analiz ediliyor..." : "Riski analiz et"}
+          <ShieldAlert size={18} /> {loading ? "Analyzing..." : "Analyze Risk"}
         </button>
       </form>
     </section>
@@ -553,70 +382,118 @@ function RiskResult({ result, loading }) {
       <section className="panel" id="result">
         <div className="empty-state">
           <ShieldAlert size={28} />
-          <strong>Puq.ai Risk Sonucu</strong>
-          <span>Yapılandırılmış JSON risk desteğini görmek için yeni bir ilacı analiz edin.</span>
+          <strong>Puq.ai Risk Result Page</strong>
+          <span>Analyze a new medicine to display structured JSON risk support.</span>
         </div>
       </section>
     );
   }
 
+  const requiresReview = ["Medium", "High"].includes(result.overall_risk_level);
+  const alternatives = result.safer_alternatives || [];
+
   return (
     <section className="panel span-2" id="result">
       <div className="panel-heading">
         <div>
-          <h3>Puq.ai İlaç Güvenliği Ajanı tarafından üretildi</h3>
-          <p>Yapılandırılmış ilaç risk analizi | Yalnızca klinik karar desteği</p>
+          <h3>Generated by Puq.ai Medication Safety Agent</h3>
+          <p>Structured medication risk analysis | Clinical decision support only</p>
         </div>
         <RiskBadge level={result.overall_risk_level} />
       </div>
-      {result.is_fallback && <div className="alert warning"><AlertTriangle size={18} /> {translateValue(result.warning)}</div>}
+      {result.is_fallback && <div className="alert warning"><AlertTriangle size={18} /> {result.warning}</div>}
+      {requiresReview && (
+        <div className={`critical-warning ${result.overall_risk_level.toLowerCase()}`}>
+          <AlertTriangle size={24} />
+          <div>
+            <strong>{result.overall_risk_level} risk detected - doctor review required</strong>
+            <span>
+              {result.high_risk_warning ||
+                "This result must be reviewed by a doctor before any clinical action. Lower-risk alternatives are shown only as decision support options."}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="result-grid">
         <div className={`score-card ${result.overall_risk_level.toLowerCase()}`}>
           <div className="score-ring" style={{ "--score": `${result.overall_risk_score * 3.6}deg` }}>
             <strong>{result.overall_risk_score}</strong>
           </div>
-          <span>Genel risk skoru</span>
+          <span>Overall risk score</span>
           <RiskBadge level={result.overall_risk_level} />
         </div>
         <div className="clinical-copy">
-          <Fact label="Yeni ilaç" value={translateValue(result.new_medicine)} />
-          <Fact label="En yüksek riskli eşleşme" value={translateValue(result.highest_risk_pair)} />
-          <Fact label="Klinik açıklama" value={translateValue(result.clinical_explanation)} />
-          <Fact label="Önerilen doktor aksiyonu" value={translateValue(result.recommended_doctor_action)} />
-          <Fact label="Güvenlik notu" value={translateValue(result.safety_note)} />
+          <Fact label="New medicine" value={result.new_medicine} />
+          <Fact label="Highest risk pair" value={result.highest_risk_pair} />
+          <Fact label="Clinical explanation" value={result.clinical_explanation} />
+          <Fact label="Recommended doctor action" value={result.recommended_doctor_action} />
+          <Fact label="Safety note" value={result.safety_note} />
         </div>
       </div>
+      {requiresReview && (
+        <div className="alternatives-section">
+          <div className="panel-heading compact-heading">
+            <div>
+              <h3>Lower-risk alternative options</h3>
+              <p>Clinical intent alternatives suggested for doctor review only. The system does not prescribe.</p>
+            </div>
+          </div>
+          {alternatives.length ? (
+            <div className="alternatives-grid">
+              {alternatives.map((item, index) => (
+                <article className="alternative-card" key={`${item.medicine_name}-${index}`}>
+                  <div className="alternative-topline">
+                    <strong>{item.medicine_name}</strong>
+                    <RiskBadge level={item.estimated_risk_level || "Low"} />
+                  </div>
+                  <span className="alternative-score">Estimated risk: {item.estimated_risk_score ?? "--"} / 100</span>
+                  <p>{item.rationale}</p>
+                  <Fact label="Possible same-function use case" value={item.suggested_use_case || "Doctor-selected equivalent clinical intent"} />
+                  <small>{item.safety_note || "For doctor review only. Not a medication instruction."}</small>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="alert warning">
+              <AlertTriangle size={18} />
+              No lower-risk alternative was returned. Request pharmacology/specialist review before deciding.
+            </div>
+          )}
+        </div>
+      )}
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Mevcut ilaç</th>
-              <th>Yeni ilaç</th>
-              <th>Etkileşim</th>
-              <th>Skor</th>
-              <th>Seviye</th>
-              <th>Olası yan etkiler</th>
-              <th>Gerekçe</th>
-              <th>Hastaya özel faktörler</th>
+              <th>Current medicine</th>
+              <th>New medicine</th>
+              <th>Interaction</th>
+              <th>Score</th>
+              <th>Level</th>
+              <th>Possible side effects</th>
+              <th>Reason</th>
+              <th>Dose / frequency note</th>
+              <th>Patient-specific factors</th>
             </tr>
           </thead>
           <tbody>
             {result.detected_interactions.map((item, index) => (
               <tr key={`${item.current_medicine}-${index}`}>
-                <td>{translateValue(item.current_medicine)}</td>
-                <td>{translateValue(item.new_medicine)}</td>
-                <td>{item.interaction_found ? "Bulundu" : "Saptanmadı"}</td>
+                <td>{item.current_medicine}</td>
+                <td>{item.new_medicine}</td>
+                <td>{item.interaction_found ? "Found" : "Not detected"}</td>
                 <td>{item.risk_score}</td>
                 <td><RiskBadge level={item.risk_level} /></td>
-                <td>{item.possible_side_effects.map(translateValue).join(", ")}</td>
-                <td>{translateValue(item.reason)}</td>
-                <td>{item.patient_specific_factors.map(translateValue).join(", ")}</td>
+                <td>{item.possible_side_effects.join(", ")}</td>
+                <td>{item.reason}</td>
+                <td>{item.dose_frequency_note || "Dose/frequency assessed by the safety engine."}</td>
+                <td>{item.patient_specific_factors.join(", ")}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {loading && <div className="alert">Kaydediliyor...</div>}
+      {loading && <div className="alert">Saving...</div>}
     </section>
   );
 }
@@ -626,15 +503,15 @@ function DecisionPanel({ result, onDecision, message, loading }) {
     <section className="panel" id="decision">
       <div className="panel-heading">
         <div>
-          <h3>Doktor karar paneli</h3>
-          <p>Klinik işlem öncesinde insan değerlendirmesi gereklidir.</p>
+          <h3>Doctor decision panel</h3>
+          <p>Human review remains required before clinical action.</p>
         </div>
       </div>
       <div className="decision-actions">
-        <button disabled={!result || loading} onClick={() => onDecision("approve")}><CheckCircle2 size={18} /> Onayla</button>
-        <button disabled={!result || loading} onClick={() => onDecision("reject")}><XCircle size={18} /> Reddet</button>
-        <button disabled={!result || loading} onClick={() => onDecision("modify")}><ClipboardCheck size={18} /> Düzenle</button>
-        <button disabled={!result || loading} onClick={() => onDecision("request_further_test")}><FlaskConical size={18} /> Ek tetkik iste</button>
+        <button disabled={!result || loading} onClick={() => onDecision("approve")}><CheckCircle2 size={18} /> Approve</button>
+        <button disabled={!result || loading} onClick={() => onDecision("reject")}><XCircle size={18} /> Reject</button>
+        <button disabled={!result || loading} onClick={() => onDecision("modify")}><ClipboardCheck size={18} /> Modify</button>
+        <button disabled={!result || loading} onClick={() => onDecision("request_further_test")}><FlaskConical size={18} /> Request Further Test</button>
       </div>
       {message && <div className="alert success">{message}</div>}
       <SafetyNotice compact />
@@ -647,8 +524,8 @@ function SafetyNotice({ compact = false }) {
     <div className={`safety-notice ${compact ? "compact" : ""}`}>
       <AlertTriangle size={compact ? 16 : 20} />
       <span>
-        Bu sistem yalnızca klinik karar desteği sağlar. Hastaya ilaç başlatma, durdurma veya değiştirme talimatı vermez.
-        Orta veya yüksek risk her zaman doktor değerlendirmesi gerektirir.
+        This system is clinical decision support only. It never tells a patient to start, stop, or change medicine.
+        Medium or High risk always requires doctor review.
       </span>
     </div>
   );
@@ -673,129 +550,35 @@ function Fact({ label, value }) {
 }
 
 function RiskBadge({ level }) {
-  return <span className={`risk-badge ${String(level).toLowerCase()}`}>{riskLevelLabel(level)}</span>;
+  return <span className={`risk-badge ${String(level).toLowerCase()}`}>{level}</span>;
 }
 
-function hasCancerDiagnosis(patient) {
-  const status = String(patient?.cancer_status || "").trim();
-  return Boolean(status && !["No active cancer", "Aktif kanser yok", "Yok", "N/A"].includes(status));
-}
-
-function patientDiseaseSummary(patient) {
-  const diagnoses = translateValue(patient?.diagnoses || "").trim();
-  return diagnoses || "Tanı kaydı yok";
+function estimatePatientRisk(patient) {
+  let score = 0;
+  if (patient.age > 65) score += 20;
+  if (patient.hemoglobin < 11) score += 18;
+  if (patient.kidney_function_status !== "Normal") score += 15;
+  if (patient.liver_function_status !== "Normal") score += 12;
+  if (patient.cancer_status !== "No active cancer") score += 16;
+  if (patient.cancer_stage === "Stage III") score += 10;
+  if (patient.chronic_disease_count >= 3) score += 12;
+  if (score >= 61) return "High";
+  if (score >= 31) return "Medium";
+  return "Low";
 }
 
 function riskFactors(patient, medicines = []) {
   const factors = [];
-  if (patient.age > 65) factors.push("65 yaş üzeri");
-  if (patient.hemoglobin < 11) factors.push("Düşük hemoglobin");
-  if (patient.kidney_function_status !== "Normal") factors.push("Böbrek fonksiyon bozukluğu");
-  if (patient.liver_function_status !== "Normal") factors.push("Karaciğer fonksiyon riski");
-  if (hasCancerDiagnosis(patient)) factors.push("Kanser tanısı");
-  if (hasCancerDiagnosis(patient) && patient.cancer_stage === "Stage III") factors.push("İleri kanser evresi");
-  if (patient.smoking_status === "Current smoker") factors.push("Aktif sigara kullanımı");
-  if (patient.alcohol_use !== "No") factors.push("Alkol kullanımı");
-  if (patient.chronic_disease_count >= 3) factors.push("Çoklu kronik hastalık");
-  if (medicines.length >= 5) factors.push("Çoklu ilaç kullanımı");
-  if (patient.allergies !== "None") factors.push(`Kayıtlı alerji: ${translateValue(patient.allergies)}`);
+  if (patient.age > 65) factors.push("Age over 65");
+  if (patient.hemoglobin < 11) factors.push("Low hemoglobin");
+  if (patient.kidney_function_status !== "Normal") factors.push("Kidney function impairment");
+  if (patient.liver_function_status !== "Normal") factors.push("Liver function concern");
+  if (patient.cancer_status !== "No active cancer") factors.push("Cancer diagnosis");
+  if (patient.cancer_stage === "Stage III") factors.push("Advanced cancer stage");
+  if (patient.smoking_status === "Current smoker") factors.push("Current smoker");
+  if (patient.alcohol_use !== "No") factors.push("Alcohol use");
+  if (patient.chronic_disease_count >= 3) factors.push("Multiple chronic diseases");
+  if (medicines.length >= 5) factors.push("Polypharmacy");
+  if (patient.allergies !== "None") factors.push(`Recorded allergy: ${patient.allergies}`);
   return factors;
-}
-
-function roleLabel(role) {
-  return role === "doctor" ? "doktor" : "hasta";
-}
-
-function riskLevelLabel(level) {
-  const labels = {
-    Low: "Düşük",
-    Medium: "Orta",
-    High: "Yüksek"
-  };
-  return labels[level] || level;
-}
-
-function translateValue(value) {
-  if (value === null || value === undefined) return "";
-  if (Array.isArray(value)) return value.map(translateValue).join(", ");
-  const text = String(value);
-  if (text.includes(", ")) {
-    return text.split(", ").map(translateValue).join(", ");
-  }
-  const dictionary = {
-    "Medical Oncology": "Tıbbi Onkoloji",
-    "Internal Medicine": "Dahiliye",
-    Cardiology: "Kardiyoloji",
-    "Clinical Pharmacology": "Klinik Farmakoloji",
-    Hematology: "Hematoloji",
-    Female: "Kadın",
-    Male: "Erkek",
-    Other: "Diğer",
-    "No active cancer": "",
-    "Aktif kanser yok": "",
-    "Breast Cancer": "Meme kanseri",
-    "Colon Cancer": "Kolon kanseri",
-    "Lung Cancer": "Akciğer kanseri",
-    Lymphoma: "Lenfoma",
-    "Prostate Cancer": "Prostat kanseri",
-    "Stage I": "Evre I",
-    "Stage II": "Evre II",
-    "Stage III": "Evre III",
-    "Stage IV": "Evre IV",
-    "N/A": "Yok",
-    Hypertension: "Hipertansiyon",
-    "Type 2 Diabetes": "Tip 2 diyabet",
-    "Chronic Kidney Disease": "Kronik böbrek hastalığı",
-    "Coronary Artery Disease": "Koroner arter hastalığı",
-    COPD: "KOAH",
-    "Atrial Fibrillation": "Atriyal fibrilasyon",
-    Hyperlipidemia: "Hiperlipidemi",
-    Hypothyroidism: "Hipotiroidi",
-    None: "Yok",
-    Penicillin: "Penisilin",
-    Sulfa: "Sülfa",
-    "NSAID sensitivity": "NSAİİ duyarlılığı",
-    "Iodine contrast": "İyotlu kontrast",
-    Cephalosporin: "Sefalosporin",
-    "Never smoker": "Hiç sigara içmemiş",
-    "Former smoker": "Eski sigara kullanıcısı",
-    "Current smoker": "Aktif sigara kullanıcısı",
-    No: "Yok",
-    Occasional: "Ara sıra",
-    Regular: "Düzenli",
-    Normal: "Normal",
-    "Mild impairment": "Hafif bozulma",
-    "Moderate impairment": "Orta düzey bozulma",
-    "Elevated enzymes": "Enzim yüksekliği",
-    "Once daily": "Günde bir kez",
-    "Twice daily": "Günde iki kez",
-    "Once nightly": "Her gece bir kez",
-    "As needed": "Gerektiğinde",
-    "Current medication list": "Mevcut ilaç listesi",
-    "Known allergy": "Bilinen alerji",
-    "No high-risk pair detected": "Yüksek riskli eşleşme saptanmadı",
-    "No interaction found": "Etkileşim bulunmadı",
-    "Increased bleeding risk": "Kanama riskinde artış",
-    "Gastrointestinal bleeding": "Gastrointestinal kanama",
-    Hyperkalemia: "Hiperkalemi",
-    "Kidney function deterioration": "Böbrek fonksiyonunda kötüleşme",
-    "Kidney-related adverse effect": "Böbrekle ilişkili advers etki",
-    "Lactic acidosis risk in susceptible patients": "Duyarlı hastalarda laktik asidoz riski",
-    "Reduced antiplatelet effectiveness": "Antiplatelet etkinlikte azalma",
-    "Reduced antiplatelet effect": "Antiplatelet etkide azalma",
-    "Reduced endocrine therapy effectiveness": "Endokrin tedavi etkinliğinde azalma",
-    "Potential allergy conflict": "Olası alerji uyumsuzluğu",
-    "No high-confidence demo interaction detected": "Yüksek güvenli etkileşim saptanmadı",
-    "Recorded allergy": "Kayıtlı alerji",
-    "Age over 65": "65 yaş üzeri",
-    "Low hemoglobin": "Düşük hemoglobin",
-    "Kidney function impairment": "Böbrek fonksiyon bozukluğu",
-    "Liver enzyme elevation": "Karaciğer enzim yüksekliği",
-    "Cancer diagnosis": "Kanser tanısı",
-    "Advanced cancer stage": "İleri kanser evresi",
-    "Alcohol use": "Alkol kullanımı",
-    "Multiple chronic diseases": "Çoklu kronik hastalık",
-    Polypharmacy: "Çoklu ilaç kullanımı"
-  };
-  return dictionary[text] || text;
 }

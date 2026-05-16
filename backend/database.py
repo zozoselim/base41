@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import sqlite3
 import secrets
 from pathlib import Path
@@ -88,6 +89,10 @@ DISEASE_POOLS_BY_DOCTOR = {
 }
 
 
+SQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+SQL_TYPE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\(\d+(?:,\d+)?\))?$")
+
+
 def get_connection() -> sqlite3.Connection:
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
@@ -134,11 +139,19 @@ def verify_password(password: str, salt: str | None, password_hash: str | None) 
 
 
 def doctor_tc_identity(doctor_id: int) -> str:
-    return f"100000000{doctor_id:02d}"
+    return _tc_identity("10000000", doctor_id)
 
 
 def patient_tc_identity(patient_id: int) -> str:
-    return f"200000000{patient_id:02d}"
+    return _tc_identity("20000000", patient_id)
+
+
+def _tc_identity(prefix: str, person_id: int) -> str:
+    if not re.fullmatch(r"\d{8}", prefix):
+        raise ValueError("prefix 8 haneli sayısal bir değer olmalıdır")
+    if not 0 <= person_id <= 999:
+        raise ValueError("person_id 0 ile 999 arasında olmalıdır")
+    return f"{prefix}{person_id:03d}"
 
 
 def doctor_for_patient(patient_id: int) -> int:
@@ -190,14 +203,31 @@ def cancer_profile_for_codes(patient_id: int, codes: list[str], disease_lookup: 
 
 
 def table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    _validate_sql_identifier(table_name)
     rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
     return {row["name"] for row in rows}
 
 
 def add_column_if_missing(connection: sqlite3.Connection, table_name: str, column_definition: str) -> None:
-    column_name = column_definition.split()[0]
+    _validate_sql_identifier(table_name)
+    parts = column_definition.split()
+    if len(parts) != 2:
+        raise ValueError("column_definition '<column_name> <column_type>' formatında olmalıdır")
+    column_name, column_type = parts
+    _validate_sql_identifier(column_name)
+    _validate_sql_type(column_type)
     if column_name not in table_columns(connection, table_name):
-        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_definition}")
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
+
+def _validate_sql_identifier(value: str) -> None:
+    if not SQL_IDENTIFIER_RE.fullmatch(value):
+        raise ValueError("Geçersiz SQL tanımlayıcı: yalnızca harf, rakam ve alt çizgi kullanılabilir")
+
+
+def _validate_sql_type(value: str) -> None:
+    if not SQL_TYPE_RE.fullmatch(value):
+        raise ValueError("Geçersiz SQL türü: örnek geçerli formatlar TEXT, INTEGER, VARCHAR(255)")
 
 
 def init_db() -> None:
