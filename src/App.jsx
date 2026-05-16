@@ -32,6 +32,7 @@ const emptyMedicine = {
 export default function App() {
   const [doctors, setDoctors] = useState([]);
   const [patients, setPatients] = useState([]);
+  const [medicationCatalog, setMedicationCatalog] = useState([]);
   const [doctor, setDoctor] = useState(null);
   const [selectedPatientId, setSelectedPatientId] = useState(1);
   const [patient, setPatient] = useState(null);
@@ -49,8 +50,10 @@ export default function App() {
           fetch(`${API_BASE}/doctors`),
           fetch(`${API_BASE}/patients`)
         ]);
+        const catalogResponse = await fetch(`${API_BASE}/medication-catalog`);
         setDoctors(await doctorResponse.json());
         setPatients(await patientResponse.json());
+        setMedicationCatalog(await catalogResponse.json());
       } catch {
         setError("Backend API is not reachable. Start FastAPI on port 8000.");
       }
@@ -89,6 +92,7 @@ export default function App() {
     event.preventDefault();
     setLoading(true);
     setError("");
+    setRiskResult(null);
     setDecisionMessage("");
     try {
       const response = await fetch(`${API_BASE}/analyze-new-medicine`, {
@@ -99,10 +103,13 @@ export default function App() {
           new_medicine: medicine
         })
       });
-      if (!response.ok) throw new Error("Risk analysis failed");
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.detail || "Risk analysis failed");
+      }
       setRiskResult(await response.json());
-    } catch {
-      setError("Risk analysis could not be completed.");
+    } catch (requestError) {
+      setError(requestError.message || "Risk analysis could not be completed.");
     } finally {
       setLoading(false);
     }
@@ -228,7 +235,14 @@ export default function App() {
             {patient && (
               <>
                 <PatientProfile patient={patient} />
-                <MedicineForm medicine={medicine} setMedicine={setMedicine} onSubmit={analyzeRisk} loading={loading} error={error} />
+                <MedicineForm
+                  medicine={medicine}
+                  medicationCatalog={medicationCatalog}
+                  setMedicine={setMedicine}
+                  onSubmit={analyzeRisk}
+                  loading={loading}
+                  error={error}
+                />
                 <RiskResult result={riskResult} loading={loading} />
                 <DecisionPanel result={riskResult} onDecision={saveDecision} message={decisionMessage} loading={loading} />
               </>
@@ -321,7 +335,7 @@ function PatientProfile({ patient }) {
   );
 }
 
-function MedicineForm({ medicine, setMedicine, onSubmit, loading, error }) {
+function MedicineForm({ medicine, medicationCatalog, setMedicine, onSubmit, loading, error }) {
   return (
     <section className="panel" id="medicine">
       <div className="panel-heading">
@@ -333,7 +347,17 @@ function MedicineForm({ medicine, setMedicine, onSubmit, loading, error }) {
       <form className="medicine-form" onSubmit={onSubmit}>
         <label>
           Medicine name
-          <input value={medicine.medicine_name} onChange={(event) => setMedicine({ ...medicine, medicine_name: event.target.value })} required />
+          <input
+            list="medication-catalog"
+            value={medicine.medicine_name}
+            onChange={(event) => setMedicine({ ...medicine, medicine_name: event.target.value })}
+            required
+          />
+          <datalist id="medication-catalog">
+            {medicationCatalog.map((item) => (
+              <option value={item.medicine_name} key={item.medicine_name} />
+            ))}
+          </datalist>
         </label>
         <label>
           Dosage
@@ -448,6 +472,7 @@ function RiskResult({ result, loading }) {
               <th>Level</th>
               <th>Possible side effects</th>
               <th>Reason</th>
+              <th>Dose / frequency note</th>
               <th>Patient-specific factors</th>
             </tr>
           </thead>
@@ -461,6 +486,7 @@ function RiskResult({ result, loading }) {
                 <td><RiskBadge level={item.risk_level} /></td>
                 <td>{item.possible_side_effects.join(", ")}</td>
                 <td>{item.reason}</td>
+                <td>{item.dose_frequency_note || "Dose/frequency assessed by the safety engine."}</td>
                 <td>{item.patient_specific_factors.join(", ")}</td>
               </tr>
             ))}

@@ -15,26 +15,63 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
 
+class MedicationCatalogError(ValueError):
+    pass
+
+
+MEDICATION_CATALOG = {
+    "amlodipine": {"name": "Amlodipine", "class": "calcium_channel_blocker", "high_daily_mg": 10, "max_daily_mg": 10},
+    "aspirin": {"name": "Aspirin", "class": "antiplatelet_nsaid", "high_daily_mg": 325, "max_daily_mg": 4000},
+    "atorvastatin": {"name": "Atorvastatin", "class": "statin", "high_daily_mg": 80, "max_daily_mg": 80},
+    "capecitabine": {"name": "Capecitabine", "class": "oncology_antimetabolite", "high_daily_mg": 2500, "max_daily_mg": 5000},
+    "clopidogrel": {"name": "Clopidogrel", "class": "antiplatelet", "high_daily_mg": 75, "max_daily_mg": 300},
+    "contrast agent": {"name": "Contrast Agent", "class": "contrast_agent", "high_daily_mg": None, "max_daily_mg": None},
+    "fluoxetine": {"name": "Fluoxetine", "class": "ssri", "high_daily_mg": 40, "max_daily_mg": 80},
+    "furosemide": {"name": "Furosemide", "class": "loop_diuretic", "high_daily_mg": 80, "max_daily_mg": 600},
+    "ibuprofen": {"name": "Ibuprofen", "class": "nsaid", "high_daily_mg": 1200, "max_daily_mg": 3200},
+    "insulin glargine": {"name": "Insulin Glargine", "class": "insulin", "high_daily_mg": None, "max_daily_mg": None},
+    "levothyroxine": {"name": "Levothyroxine", "class": "thyroid_hormone", "high_daily_mg": 0.2, "max_daily_mg": 0.3},
+    "lisinopril": {"name": "Lisinopril", "class": "ace_inhibitor", "high_daily_mg": 40, "max_daily_mg": 80},
+    "metformin": {"name": "Metformin", "class": "biguanide", "high_daily_mg": 2000, "max_daily_mg": 2550},
+    "omeprazole": {"name": "Omeprazole", "class": "ppi", "high_daily_mg": 40, "max_daily_mg": 120},
+    "pantoprazole": {"name": "Pantoprazole", "class": "ppi", "high_daily_mg": 40, "max_daily_mg": 80},
+    "paracetamol": {"name": "Paracetamol", "class": "analgesic", "high_daily_mg": 3000, "max_daily_mg": 4000},
+    "prednisone": {"name": "Prednisone", "class": "corticosteroid", "high_daily_mg": 20, "max_daily_mg": 80},
+    "sertraline": {"name": "Sertraline", "class": "ssri", "high_daily_mg": 100, "max_daily_mg": 200},
+    "spironolactone": {"name": "Spironolactone", "class": "potassium_sparing_diuretic", "high_daily_mg": 50, "max_daily_mg": 200},
+    "tamoxifen": {"name": "Tamoxifen", "class": "serm", "high_daily_mg": 20, "max_daily_mg": 40},
+    "topical nsaid": {"name": "Topical NSAID", "class": "topical_nsaid", "high_daily_mg": None, "max_daily_mg": None},
+    "warfarin": {"name": "Warfarin", "class": "anticoagulant", "high_daily_mg": 7.5, "max_daily_mg": 15},
+}
+
+FREQUENCY_MULTIPLIERS = {
+    "once daily": 1,
+    "once nightly": 1,
+    "twice daily": 2,
+    "three times daily": 3,
+    "four times daily": 4,
+    "as needed": 1,
+    "once weekly": 1 / 7,
+}
+
+
 def prepare_puq_payload(
     patient_data: dict[str, Any],
     current_medications: list[dict[str, Any]],
     new_medicine: dict[str, Any],
 ) -> dict[str, Any]:
+    validate_medication(new_medicine["medicine_name"])
+    enriched_current = [enrich_medication(item) for item in current_medications]
+    enriched_new = enrich_medication(new_medicine)
     return {
         "task": "medication_risk_analysis",
         "patient_data": patient_data,
-        "current_medications": [
-            {
-                "medicine_name": item["medicine_name"],
-                "dosage": item["dosage"],
-                "frequency": item["frequency"],
-            }
-            for item in current_medications
-        ],
-        "new_medicine": new_medicine,
+        "current_medications": enriched_current,
+        "new_medicine": enriched_new,
         "instructions": {
             "compare_new_medicine_with_current_medications": True,
             "calculate_risk_score": True,
+            "use_dosage_and_frequency_in_risk_score": True,
             "recommend_lower_risk_alternatives_for_medium_or_high_risk": True,
             "return_structured_json": True,
             "doctor_review_required": True,
@@ -44,6 +81,7 @@ def prepare_puq_payload(
                 "When overall_risk_level is Medium or High, return safer_alternatives. "
                 "Alternatives must be framed as options for doctor review only, not medication instructions."
             ),
+            "medication_catalog_rule": "If the medicine is outside the supplied known catalog, say it is not in the catalog instead of guessing.",
             "output_language": "English with Turkish-friendly clinical labels when useful",
         },
     }
@@ -103,6 +141,7 @@ def normalize_puq_response(response: Any, payload: dict[str, Any]) -> dict[str, 
         "safety_note",
         "This result is for clinical decision support only and does not replace professional medical judgment.",
     )
+    response = apply_local_safety_floor(response, payload)
     response["is_fallback"] = False
     return response
 
@@ -182,18 +221,159 @@ def extract_first_json_object(text: str) -> str | None:
     return text[start : end + 1]
 
 
+def normalize_name(name: str) -> str:
+    return " ".join(name.strip().lower().split())
+
+
+def validate_medication(name: str) -> dict[str, Any]:
+    key = normalize_name(name)
+    if key not in MEDICATION_CATALOG:
+        known = ", ".join(sorted(item["name"] for item in MEDICATION_CATALOG.values()))
+        raise MedicationCatalogError(
+            f"'{name}' is not in the medication catalog. Please choose one of the supported demo medicines: {known}."
+        )
+    return MEDICATION_CATALOG[key]
+
+
+def supported_medications() -> list[dict[str, Any]]:
+    return [
+        {
+            "medicine_name": item["name"],
+            "drug_class": item["class"],
+            "high_daily_mg": item["high_daily_mg"],
+            "max_daily_mg": item["max_daily_mg"],
+        }
+        for item in sorted(MEDICATION_CATALOG.values(), key=lambda entry: entry["name"])
+    ]
+
+
+def enrich_medication(medicine: dict[str, Any]) -> dict[str, Any]:
+    catalog = validate_medication(medicine["medicine_name"])
+    daily_dose_mg = estimate_daily_dose_mg(medicine.get("dosage", ""), medicine.get("frequency", ""))
+    dose_status = dose_status_for(catalog, daily_dose_mg)
+    return {
+        "medicine_name": catalog["name"],
+        "dosage": medicine.get("dosage", ""),
+        "frequency": medicine.get("frequency", ""),
+        "drug_class": catalog["class"],
+        "estimated_daily_dose_mg": daily_dose_mg,
+        "dose_status": dose_status,
+    }
+
+
+def estimate_daily_dose_mg(dosage: str, frequency: str) -> float | None:
+    strength = parse_strength_mg(dosage)
+    if strength is None:
+        return None
+    frequency_key = normalize_name(frequency)
+    multiplier = FREQUENCY_MULTIPLIERS.get(frequency_key, 1)
+    return round(strength * multiplier, 2)
+
+
+def parse_strength_mg(dosage: str) -> float | None:
+    normalized = dosage.lower().replace(",", "")
+    word_multiplier = 1
+    if re.search(r"\b(milyon|million)\b", normalized):
+        word_multiplier = 1_000_000
+        normalized = re.sub(r"\b(milyon|million)\b", "", normalized)
+    elif re.search(r"\b(bin|thousand)\b", normalized):
+        word_multiplier = 1_000
+        normalized = re.sub(r"\b(bin|thousand)\b", "", normalized)
+
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(mcg|mg|g|units?)", normalized)
+    if not match:
+        return None
+    value = float(match.group(1)) * word_multiplier
+    unit = match.group(2)
+    if unit == "g":
+        return value * 1000
+    if unit == "mcg":
+        return value / 1000
+    if unit.startswith("unit"):
+        return None
+    return value
+
+
+def dose_status_for(catalog: dict[str, Any], daily_dose_mg: float | None) -> str:
+    if daily_dose_mg is None:
+        return "unknown"
+    max_daily = catalog.get("max_daily_mg")
+    high_daily = catalog.get("high_daily_mg")
+    if max_daily is not None and daily_dose_mg > max_daily * 10:
+        return "extreme_overdose_range"
+    if high_daily is not None and max_daily is None and daily_dose_mg > high_daily * 10:
+        return "extreme_overdose_range"
+    if max_daily is not None and daily_dose_mg > max_daily:
+        return "above_catalog_max"
+    if high_daily is not None and daily_dose_mg >= high_daily:
+        return "high"
+    return "usual"
+
+
+def apply_local_safety_floor(response: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    local = local_risk_assessment(
+        payload["patient_data"],
+        payload.get("current_medications", []),
+        payload["new_medicine"],
+    )
+    local_score = int(local["overall_risk_score"])
+    remote_score = int(response.get("overall_risk_score", 0))
+
+    if local_score > remote_score:
+        response["overall_risk_score"] = local_score
+        response["overall_risk_level"] = local["overall_risk_level"]
+        response["highest_risk_pair"] = local["highest_risk_pair"]
+        response["detected_interactions"] = merge_interactions(
+            response.get("detected_interactions", []),
+            local["detected_interactions"],
+        )
+        response["clinical_explanation"] = local["clinical_explanation"]
+        response["recommended_doctor_action"] = local["recommended_doctor_action"]
+        response["high_risk_warning"] = local["high_risk_warning"]
+        response["safer_alternatives"] = local["safer_alternatives"]
+        response["local_safety_floor_applied"] = True
+
+    return response
+
+
+def merge_interactions(remote: list[dict[str, Any]], local: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged = list(remote)
+    seen = {(item.get("current_medicine"), item.get("new_medicine")) for item in merged}
+    for item in local:
+        key = (item.get("current_medicine"), item.get("new_medicine"))
+        if key not in seen:
+            merged.append(item)
+            seen.add(key)
+    return merged
+
+
 def get_fallback_puq_response(patient_id: int, new_medicine: dict[str, Any], patient_data: dict[str, Any] | None = None, current_medications: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     patient_data = patient_data or {}
     current_medications = current_medications or []
-    new_name = new_medicine["medicine_name"]
-    factors = patient_specific_factors(patient_data, current_medications, new_name)
+    return {
+        **local_risk_assessment(patient_data, current_medications, new_medicine),
+        "patient_id": patient_id,
+        "is_fallback": True,
+        "warning": WARNING,
+    }
+
+
+def local_risk_assessment(patient_data: dict[str, Any], current_medications: list[dict[str, Any]], new_medicine: dict[str, Any]) -> dict[str, Any]:
+    enriched_current = [enrich_medication(item) for item in current_medications]
+    enriched_new = enrich_medication(new_medicine)
+    new_name = enriched_new["medicine_name"]
+    factors = patient_specific_factors(patient_data, enriched_current, new_name)
+    dose_factors = dose_frequency_factors(enriched_new)
     interactions = []
 
-    for current in current_medications:
+    for current in enriched_current:
         interaction = known_interaction(current["medicine_name"], new_name)
         score = interaction["base_score"] if interaction else 18
         if interaction:
+            current_dose_factors = dose_frequency_factors(current)
+            all_factors = factors + dose_factors + current_dose_factors
             score += factor_score(factors)
+            score += dose_frequency_score(enriched_new, current)
             score = min(100, score)
             interactions.append(
                 {
@@ -204,7 +384,8 @@ def get_fallback_puq_response(patient_id: int, new_medicine: dict[str, Any], pat
                     "risk_level": risk_level_from_score(score),
                     "possible_side_effects": interaction["possible_side_effects"],
                     "reason": interaction["reason"],
-                    "patient_specific_factors": factors,
+                    "patient_specific_factors": all_factors or ["No major patient-specific factor detected"],
+                    "dose_frequency_note": dose_frequency_note(enriched_new, current),
                     "doctor_review_required": score > 30,
                 }
             )
@@ -220,13 +401,19 @@ def get_fallback_puq_response(patient_id: int, new_medicine: dict[str, Any], pat
                 "risk_level": "High",
                 "possible_side_effects": ["Potential allergy conflict"],
                 "reason": "The new medicine may conflict with a recorded allergy or sensitivity.",
-                "patient_specific_factors": factors + ["Recorded allergy"],
+                "patient_specific_factors": factors + dose_factors + ["Recorded allergy"],
+                "dose_frequency_note": dose_frequency_note(enriched_new, None),
                 "doctor_review_required": True,
             }
         )
 
     if not interactions:
-        score = min(60, 18 + factor_score(factors))
+        score = no_interaction_score(factors, enriched_new)
+        if enriched_new.get("dose_status") == "above_catalog_max":
+            score = max(score, 72)
+        if enriched_new.get("dose_status") == "extreme_overdose_range":
+            score = max(score, 95)
+        score = min(100, score)
         interactions.append(
             {
                 "current_medicine": "Current medication list",
@@ -235,8 +422,9 @@ def get_fallback_puq_response(patient_id: int, new_medicine: dict[str, Any], pat
                 "risk_score": score,
                 "risk_level": risk_level_from_score(score),
                 "possible_side_effects": ["No high-confidence demo interaction detected"],
-                "reason": "Fallback demo logic did not find a known serious interaction, but clinical review is still required.",
-                "patient_specific_factors": factors or ["No major fallback risk factor detected"],
+                "reason": no_interaction_reason(enriched_new),
+                "patient_specific_factors": factors + dose_factors or ["No major local risk factor detected"],
+                "dose_frequency_note": dose_frequency_note(enriched_new, None),
                 "doctor_review_required": score > 30,
             }
         )
@@ -248,7 +436,7 @@ def get_fallback_puq_response(patient_id: int, new_medicine: dict[str, Any], pat
     alternatives = safer_alternatives_for(new_name, highest, patient_data, current_medications, factors)
 
     return {
-        "patient_id": patient_id,
+        "patient_id": patient_data.get("id"),
         "new_medicine": new_name,
         "overall_risk_score": overall_score,
         "overall_risk_level": overall_level,
@@ -259,8 +447,7 @@ def get_fallback_puq_response(patient_id: int, new_medicine: dict[str, Any], pat
         "high_risk_warning": warning_for_level(overall_level),
         "safer_alternatives": alternatives if overall_level in {"Medium", "High"} else [],
         "safety_note": "This result is for clinical decision support only and does not replace professional medical judgment.",
-        "is_fallback": True,
-        "warning": WARNING,
+        "dose_frequency_assessed": True,
     }
 
 
@@ -269,13 +456,13 @@ def known_interaction(current: str, new: str) -> dict[str, Any] | None:
     rules = [
         {
             "drugs": {"warfarin", "aspirin"},
-            "base_score": 70,
+            "base_score": 82,
             "possible_side_effects": ["Increased bleeding risk"],
             "reason": "Warfarin and Aspirin may both increase bleeding tendency.",
         },
         {
             "drugs": {"warfarin", "ibuprofen"},
-            "base_score": 72,
+            "base_score": 78,
             "possible_side_effects": ["Increased bleeding risk", "Gastrointestinal bleeding"],
             "reason": "Warfarin and Ibuprofen may increase anticoagulant-related bleeding risk.",
         },
@@ -287,7 +474,7 @@ def known_interaction(current: str, new: str) -> dict[str, Any] | None:
         },
         {
             "drugs": {"lisinopril", "spironolactone"},
-            "base_score": 68,
+            "base_score": 76,
             "possible_side_effects": ["Hyperkalemia", "Kidney function deterioration"],
             "reason": "Both medicines can raise potassium and require kidney function monitoring.",
         },
@@ -299,7 +486,7 @@ def known_interaction(current: str, new: str) -> dict[str, Any] | None:
         },
         {
             "drugs": {"clopidogrel", "omeprazole"},
-            "base_score": 42,
+            "base_score": 50,
             "possible_side_effects": ["Reduced antiplatelet effectiveness"],
             "reason": "Omeprazole may reduce activation of Clopidogrel in some patients.",
         },
@@ -308,6 +495,30 @@ def known_interaction(current: str, new: str) -> dict[str, Any] | None:
             "base_score": 48,
             "possible_side_effects": ["Reduced endocrine therapy effectiveness"],
             "reason": "Fluoxetine may affect Tamoxifen metabolism.",
+        },
+        {
+            "drugs": {"ibuprofen", "prednisone"},
+            "base_score": 58,
+            "possible_side_effects": ["Gastrointestinal bleeding", "Ulceration risk"],
+            "reason": "NSAID and corticosteroid overlap may increase gastrointestinal adverse event risk.",
+        },
+        {
+            "drugs": {"aspirin", "prednisone"},
+            "base_score": 56,
+            "possible_side_effects": ["Gastrointestinal bleeding", "Ulceration risk"],
+            "reason": "Aspirin and corticosteroid overlap may increase gastrointestinal bleeding concern.",
+        },
+        {
+            "drugs": {"sertraline", "ibuprofen"},
+            "base_score": 48,
+            "possible_side_effects": ["Increased bleeding risk"],
+            "reason": "SSRI and NSAID overlap may increase bleeding risk in susceptible patients.",
+        },
+        {
+            "drugs": {"fluoxetine", "ibuprofen"},
+            "base_score": 50,
+            "possible_side_effects": ["Increased bleeding risk"],
+            "reason": "SSRI and NSAID overlap may increase bleeding risk in susceptible patients.",
         },
     ]
 
@@ -342,6 +553,98 @@ def patient_specific_factors(patient: dict[str, Any], current_medications: list[
     if allergy_conflict(patient.get("allergies", ""), new_name):
         factors.append("Recorded allergy")
     return factors
+
+
+def dose_frequency_factors(medicine: dict[str, Any]) -> list[str]:
+    factors = []
+    daily_dose = medicine.get("estimated_daily_dose_mg")
+    if daily_dose is not None:
+        factors.append(f"{medicine['medicine_name']} estimated daily dose {daily_dose:g} mg")
+    if medicine.get("dose_status") == "extreme_overdose_range":
+        factors.append(f"{medicine['medicine_name']} extreme overdose-range daily dose")
+    if medicine.get("dose_status") == "high":
+        factors.append(f"{medicine['medicine_name']} high daily dose range")
+    if medicine.get("dose_status") == "above_catalog_max":
+        factors.append(f"{medicine['medicine_name']} above catalog maximum daily dose")
+    frequency = normalize_name(medicine.get("frequency", ""))
+    if "twice" in frequency or "three" in frequency or "four" in frequency:
+        factors.append(f"{medicine['medicine_name']} repeated daily dosing")
+    return factors
+
+
+def dose_frequency_score(new_medicine: dict[str, Any], current_medicine: dict[str, Any] | None) -> int:
+    score = single_dose_score(new_medicine)
+    if current_medicine:
+        score += single_dose_score(current_medicine)
+        pair_classes = {new_medicine.get("drug_class"), current_medicine.get("drug_class")}
+        if pair_classes & {"nsaid", "antiplatelet_nsaid"} and pair_classes & {"anticoagulant", "antiplatelet"}:
+            score += 8
+        if pair_classes == {"ace_inhibitor", "potassium_sparing_diuretic"}:
+            score += 7
+    return min(80, score)
+
+
+def single_dose_score(medicine: dict[str, Any]) -> int:
+    status = medicine.get("dose_status")
+    if status == "extreme_overdose_range":
+        return 70
+    if status == "above_catalog_max":
+        return 45
+    if status == "high":
+        return 12
+    if "repeated daily dosing" in " ".join(dose_frequency_factors(medicine)).lower():
+        return 3
+    return 0
+
+
+def dose_frequency_note(new_medicine: dict[str, Any], current_medicine: dict[str, Any] | None) -> str:
+    notes = dose_frequency_factors(new_medicine)
+    if current_medicine:
+        notes += dose_frequency_factors(current_medicine)
+    return "; ".join(notes) if notes else "Dose and frequency did not add a specific local risk modifier."
+
+
+def no_interaction_score(factors: list[str], new_medicine: dict[str, Any]) -> int:
+    dose_status = new_medicine.get("dose_status")
+    if dose_status == "extreme_overdose_range":
+        return 95
+    if dose_status == "above_catalog_max":
+        return 72
+
+    score = 8
+    cautious_factor_weights = {
+        "Age over 65": 3,
+        "Low hemoglobin": 2,
+        "Kidney function impairment": 4,
+        "Liver enzyme elevation": 4,
+        "Cancer diagnosis": 3,
+        "Advanced cancer stage": 4,
+        "Current smoker": 1,
+        "Alcohol use": 2,
+        "Multiple chronic diseases": 3,
+        "Polypharmacy": 3,
+        "Recorded allergy": 12,
+    }
+    score += sum(cautious_factor_weights.get(factor, 0) for factor in factors)
+    if dose_status == "high":
+        score += 8
+    if "repeated daily dosing" in " ".join(dose_frequency_factors(new_medicine)).lower():
+        score += 2
+    return min(40, score)
+
+
+def no_interaction_reason(new_medicine: dict[str, Any]) -> str:
+    if new_medicine.get("dose_status") == "extreme_overdose_range":
+        return (
+            "No known pairwise interaction was detected, but the entered dose is far above the catalog maximum. "
+            "This creates a critical dose-related medication safety concern that requires urgent doctor review."
+        )
+    if new_medicine.get("dose_status") == "above_catalog_max":
+        return (
+            "No known pairwise interaction was detected, but the entered dose is above the catalog maximum. "
+            "This raises a high dose-related medication safety concern requiring doctor review."
+        )
+    return "Local safety logic did not find a known serious interaction, but clinical review is still required."
 
 
 def allergy_conflict(allergies: str, medicine_name: str) -> bool:
