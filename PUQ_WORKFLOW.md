@@ -124,6 +124,10 @@ Output requirements:
 - Do not wrap the JSON in ```json.
 - Do not include any text outside the JSON object.
 - Use the exact field names below because the application depends on them.
+- The final workflow response must be this JSON object itself, not a text summary.
+- Do not use root-level fields named `risk_score`, `risk_level`, or `detected_interaction`; use `overall_risk_score`, `overall_risk_level`, and `detected_interactions`.
+- If a Router node is used, both Branch 1 and Otherwise must return this same JSON schema.
+- If the tool has a "Response", "Output", "Return", or "Final answer" field, map it to the Agent JSON object directly.
 
 Return exactly this JSON shape:
 {
@@ -183,7 +187,80 @@ doctor_review_required
 
 The Otherwise branch does not need a condition. It handles `router_key = low_risk`.
 
-## Important Output Step
+## Important Output Step With Webhook Response
+
+Use Webhook Response as the primary integration mode.
+
+The app sends one HTTP POST request to the Puq.ai webhook. The Puq.ai workflow must answer that same request with the final structured risk JSON. Do not make the backend read the result from `/v1/executions/{run_id}` because that endpoint may only expose step metadata, not the Agent output.
+
+Important Puq.ai URL choice:
+
+```text
+Use the Sync Endpoint, not the Async Endpoint.
+```
+
+Puq.ai Webhook Trigger docs say the editor's Webhook menu gives two URLs:
+
+- Async Endpoint: returns immediately and gives a run id while the workflow continues in the background.
+- Sync Endpoint: waits until workflow completion and returns the final workflow output.
+
+For this project, `.env` must use the Sync Endpoint:
+
+```text
+PUQ_WEBHOOK_URL=your_puq_ai_sync_webhook_url
+```
+
+If the app receives this response, you are still using the Async endpoint:
+
+```json
+{
+  "message": "Workflow run started successfully",
+  "run_id": "..."
+}
+```
+
+Recommended flow:
+
+```text
+1. Webhook
+   -> 2. Agent
+   -> 3. Router
+      -> Branch 1: Webhook Response
+      -> Otherwise: Webhook Response
+```
+
+In both Webhook Response steps:
+
+```text
+Response Type:
+JSON
+
+Status Code:
+200
+
+Body:
+{{ step_1.output }}
+```
+
+If your Agent node is not `step_1`, choose the Agent step from the variable picker and map its `output` field. The response body must be the Agent JSON object itself, not the Router object, not the whole execution object, and not `{ "success": true }`.
+
+If Puq.ai requires a JSON object instead of a raw mapped value, use:
+
+```json
+{{ step_1.output }}
+```
+
+or, if it only accepts object fields:
+
+```text
+Map the response body directly to Agent -> output from the variable picker.
+```
+
+Important:
+- Put Webhook Response after the Agent result is ready.
+- If Router has two branches, both branches must have a Webhook Response step.
+- Enable "Stop Workflow After Response" if Puq.ai offers it.
+- The first Webhook Response action is the one that returns to the backend; do not place an early response before the Agent.
 
 If Puq.ai asks you to configure a final workflow response, return the Agent JSON object itself. Do not return only text, a summary, or an empty branch result.
 
@@ -198,3 +275,41 @@ Branch 1 and Otherwise should both return the same JSON schema:
 - `high_risk_warning`
 - `safer_alternatives`
 - `safety_note`
+
+## Common Cause Of Fallback Warning
+
+If the app says the workflow did not return structured JSON, the webhook request reached Puq.ai but the final workflow response is not the Agent JSON. Fix it like this:
+
+```text
+Webhook -> Agent -> Router
+                  -> Branch 1 final output: Agent output JSON
+                  -> Otherwise final output: Agent output JSON
+```
+
+This project is now configured to prefer Webhook Response. If Puq.ai still returns only `run_id`, it means the workflow is still running as async and the final Webhook Response is not being returned to the original request.
+
+Do not return a sentence like:
+
+```text
+The medication risk is high...
+```
+
+Do not return only:
+
+```json
+{
+  "success": true
+}
+```
+
+The final response must contain at minimum:
+
+```json
+{
+  "overall_risk_score": 85,
+  "overall_risk_level": "High",
+  "detected_interactions": [],
+  "router_key": "doctor_review_required",
+  "doctor_review_required": true
+}
+```

@@ -3,6 +3,7 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   FlaskConical,
   HeartPulse,
@@ -40,6 +41,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [medicine, setMedicine] = useState(emptyMedicine);
   const [riskResult, setRiskResult] = useState(null);
+  const [pendingRun, setPendingRun] = useState(null);
   const [decisionMessage, setDecisionMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -59,7 +61,7 @@ export default function App() {
           setMedicationCatalog(await catalogResponse.json());
         }
       } catch {
-        setError("Backend API'ye ulaşılamıyor. Önce FastAPI'yi başlatın.");
+        setError("Backend API'ye ulasilamiyor. Once FastAPI'yi baslatin.");
       }
     }
     loadInitialData();
@@ -95,6 +97,7 @@ export default function App() {
     if (!doctor || !selectedPatientId) return;
     async function loadPatient() {
       setRiskResult(null);
+      setPendingRun(null);
       setDecisionMessage("");
       const response = await fetch(`${API_BASE}/patients/${selectedPatientId}?doctor_id=${doctor.id}`);
       if (response.ok) {
@@ -120,6 +123,15 @@ export default function App() {
     return { total: patients.length, cancerDiagnosed, pending };
   }, [patients]);
 
+  async function refreshSelectedPatient() {
+    if (!doctor || !selectedPatientId) return null;
+    const response = await fetch(`${API_BASE}/patients/${selectedPatientId}?doctor_id=${doctor.id}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    setPatient(data);
+    return data;
+  }
+
   async function loginUser(credentials) {
     setLoading(true);
     setError("");
@@ -144,6 +156,7 @@ export default function App() {
     setPatient(null);
     setSelectedPatientId(null);
     setRiskResult(null);
+    setPendingRun(null);
     setDecisionMessage("");
     setError("");
   }
@@ -153,7 +166,8 @@ export default function App() {
     if (!doctor || !patient) return;
     setLoading(true);
     setError("");
-    setRiskResult(null);
+      setRiskResult(null);
+      setPendingRun(null);
     setDecisionMessage("");
     try {
       const response = await fetch(`${API_BASE}/analyze-new-medicine`, {
@@ -169,7 +183,12 @@ export default function App() {
         const errorBody = await response.json().catch(() => ({}));
         throw new Error(errorBody.detail || "Risk analizi başarısız");
       }
-      setRiskResult(await response.json());
+      const data = await response.json();
+      if (data.puq_async_pending && data.puq_run_id) {
+        setPendingRun(data);
+      } else {
+        setRiskResult(data);
+      }
     } catch (requestError) {
       setError(translateValue(requestError.message) || "Risk analizi tamamlanamadı.");
     } finally {
@@ -177,7 +196,48 @@ export default function App() {
     }
   }
 
-  async function saveDecision(decision) {
+  async function pollPuqRun(runInfo = pendingRun) {
+    if (!runInfo?.puq_run_id || !doctor || !patient) return;
+    try {
+      const response = await fetch(`${API_BASE}/puq-runs/${runInfo.puq_run_id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient_id: patient.id,
+          doctor_id: doctor.id,
+          new_medicine: medicine
+        })
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.detail || "Puq.ai sonucu kontrol edilemedi");
+      }
+      const data = await response.json();
+      if (data.overall_risk_score !== undefined) {
+        setPendingRun(null);
+        setRiskResult(data);
+      } else if (data.puq_async_pending === false) {
+        setPendingRun(null);
+        const candidate = data.puq_output_candidates?.[0];
+        const candidateHint = candidate ? ` JSON adayi: ${candidate.path}` : "";
+        setError(`${translateValue(data.message || "Puq.ai sonucu yapilandirilmis risk JSON'u icermiyor.")}${candidateHint}`);
+      } else {
+        setPendingRun({ ...runInfo, ...data });
+      }
+    } catch (requestError) {
+      setError(translateValue(requestError.message) || "Puq.ai sonucu kontrol edilemedi.");
+    }
+  }
+
+  useEffect(() => {
+    if (!pendingRun?.puq_run_id || riskResult) return;
+    const intervalId = window.setInterval(() => {
+      pollPuqRun(pendingRun);
+    }, 2500);
+    return () => window.clearInterval(intervalId);
+  }, [pendingRun?.puq_run_id, pendingRun?.puq_status, riskResult, doctor?.id, patient?.id, medicine.medicine_name, medicine.dosage, medicine.frequency]);
+
+  async function saveDecision(decision, details = {}) {
     if (!riskResult || !doctor || !patient) return;
     setLoading(true);
     setDecisionMessage("");
@@ -189,12 +249,17 @@ export default function App() {
           doctor_id: doctor.id,
           patient_id: patient.id,
           new_medicine: riskResult.new_medicine,
+          dosage: medicine.dosage,
+          frequency: medicine.frequency,
           risk_score: riskResult.overall_risk_score,
           risk_level: riskResult.overall_risk_level,
-          decision
+          decision,
+          ...details
         })
       });
       if (!response.ok) throw new Error("Karar kaydedilemedi");
+      await response.json();
+      await refreshSelectedPatient();
       setDecisionMessage(`${decisionLabels[decision]} doktor kontrollü inceleme için kaydedildi.`);
     } catch {
       setDecisionMessage("Karar kaydedilemedi.");
@@ -249,11 +314,19 @@ export default function App() {
               Orta ve yüksek risk her zaman doktor değerlendirmesi gerektirir.
             </p>
           </div>
-          <div className="integration-card">
-            <CheckCircle2 size={22} />
-            <div>
-              <strong>Puq.ai entegrasyonu hazır</strong>
-              <span>Yapılandırıldıysa gerçek webhook, yoksa güvenli varsayılan yanıt kullanılır.</span>
+          <div className="top-panel">
+            <div className="doctor-top-card">
+              <Stethoscope size={18} />
+              <div>
+                <strong>{doctor.name}</strong>
+                <span>{translateValue(doctor.specialty)}</span>
+              </div>
+              <button onClick={logout}><LogOut size={15} /> Cikis</button>
+            </div>
+            <div className="compact-stats">
+              <Stat title="Toplam hasta" value={stats.total} />
+              <Stat title="Kanser tanili" value={stats.cancerDiagnosed} tone="warning" />
+              <Stat title="Oncelikli" value={stats.pending} tone="danger" />
             </div>
           </div>
         </section>
@@ -308,7 +381,7 @@ export default function App() {
                   loading={loading}
                   error={error}
                 />
-                <RiskResult result={riskResult} loading={loading} />
+                <RiskResult result={riskResult} loading={loading || Boolean(pendingRun)} pendingRun={pendingRun} />
                 <DecisionPanel result={riskResult} onDecision={saveDecision} message={decisionMessage} loading={loading} />
               </>
             )}
@@ -406,7 +479,7 @@ function LoginScreen({ onLogin, loading, error }) {
 }
 
 function PatientPortal({ patient, onLogout }) {
-  const safePatient = { ...patient, current_medications: patient.current_medications || [] };
+  const safePatient = { ...patient, current_medications: patient.current_medications || [], requested_tests: patient.requested_tests || [] };
   const factors = riskFactors(safePatient, safePatient.current_medications);
   return (
     <div className="app-shell patient-shell">
@@ -470,6 +543,7 @@ function PatientProfile({ patient }) {
     frequency: translateValue(item.frequency)
   }));
   const diagnosisCodes = patient.diagnosis_codes || [];
+  const requestedTests = patient.requested_tests || [];
   const factors = riskFactors(patient, currentMedicines);
   return (
     <section className="panel span-2" id="profile">
@@ -522,6 +596,20 @@ function PatientProfile({ patient }) {
           </div>
         </div>
       </div>
+      {requestedTests.length > 0 && (
+        <div className="requested-tests">
+          <h4>Istenecek tetkikler</h4>
+          <div className="test-list">
+            {requestedTests.map((item) => (
+              <article key={item.id} className="test-item">
+                <strong>{item.test_name}</strong>
+                <span>{item.test_date} | {item.doctor_name}</span>
+                <p>{item.note || "Ek aciklama yok"}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -536,20 +624,14 @@ function MedicineForm({ medicine, medicationCatalog, setMedicine, onSubmit, load
         </div>
       </div>
       <form className="medicine-form" onSubmit={onSubmit}>
-        <label>
+        <div className="medicine-select-wrapper">
           İlaç adı
-          <input
-            list="medication-catalog"
-            value={medicine.medicine_name}
-            onChange={(event) => setMedicine({ ...medicine, medicine_name: event.target.value })}
-            required
+          <MedicineSelect
+            medicineName={medicine.medicine_name}
+            medicationCatalog={medicationCatalog}
+            onSelect={(medicineName) => setMedicine({ ...medicine, medicine_name: medicineName })}
           />
-          <datalist id="medication-catalog">
-            {medicationCatalog.map((item) => (
-              <option value={item.medicine_name} key={item.medicine_name} />
-            ))}
-          </datalist>
-        </label>
+        </div>
         <label>
           Doz
           <input value={medicine.dosage} onChange={(event) => setMedicine({ ...medicine, dosage: event.target.value })} required />
@@ -567,14 +649,82 @@ function MedicineForm({ medicine, medicationCatalog, setMedicine, onSubmit, load
   );
 }
 
-function RiskResult({ result, loading }) {
+function MedicineSelect({ medicineName, medicationCatalog, onSelect }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filteredMedicines = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    const medicines = medicationCatalog.map((item) => item.medicine_name).filter(Boolean);
+    if (!term) return medicines;
+    return medicines.filter((name) => name.toLowerCase().includes(term));
+  }, [medicationCatalog, query]);
+
+  function chooseMedicine(name) {
+    onSelect(name);
+    setQuery("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="medicine-select">
+      <div className="field-label">Ilac adi</div>
+      <button type="button" className="select-trigger" onClick={() => setOpen((value) => !value)}>
+        <span>{medicineName || "Katalogdan ilac sec"}</span>
+        <ChevronDown size={17} />
+      </button>
+      {open && (
+        <div className="select-popover">
+          <label className="select-search">
+            <Search size={16} />
+            <input
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Ilac ara"
+            />
+          </label>
+          <div className="select-options" role="listbox">
+            {filteredMedicines.length === 0 && <div className="select-empty">Eslesen ilac bulunamadi</div>}
+            {filteredMedicines.map((name) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={name === medicineName}
+                className={name === medicineName ? "selected" : ""}
+                key={name}
+                onClick={() => chooseMedicine(name)}
+              >
+                <span>{name}</span>
+                {name === medicineName && <CheckCircle2 size={16} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RiskResult({ result, loading, pendingRun }) {
   if (!result) {
     return (
       <section className="panel" id="result">
         <div className="empty-state">
-          <ShieldAlert size={28} />
-          <strong>Puq.ai Risk Sonucu</strong>
-          <span>Yapılandırılmış JSON risk desteğini görmek için yeni bir ilacı analiz edin.</span>
+          {pendingRun || loading ? (
+            <>
+              <div className="loading-ring" />
+              <strong>Puq.ai analizi bekleniyor</strong>
+              <span>Workflow sonucu hazir olana kadar bekleniyor. Yerel guvenlik sonucu gosterilmiyor.</span>
+              {pendingRun?.puq_run_id && <small>Run ID: {pendingRun.puq_run_id}</small>}
+            </>
+          ) : (
+            <>
+              <ShieldAlert size={28} />
+              <strong>Puq.ai Risk Sonucu</strong>
+              <span>Yapılandırılmış JSON risk desteğini görmek için yeni bir ilacı analiz edin.</span>
+            </>
+          )}
         </div>
       </section>
     );
@@ -592,7 +742,22 @@ function RiskResult({ result, loading }) {
         </div>
         <RiskBadge level={result.overall_risk_level} />
       </div>
-      {result.is_fallback && <div className="alert warning"><AlertTriangle size={18} /> {translateValue(result.warning)}</div>}
+      {result.is_fallback && (
+        <div className="alert warning fallback-warning">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>{translateValue(result.warning)}</strong>
+            {result.puq_error_detail && (
+              <small>
+                Puq.ai durum: {translateValue(result.puq_error_type || "bilinmiyor")} - {translateValue(result.puq_error_detail)}
+              </small>
+            )}
+            {result.puq_raw_response_preview && (
+              <small>Ham cevap onizleme: {result.puq_raw_response_preview}</small>
+            )}
+          </div>
+        </div>
+      )}
       {requiresReview && (
         <div className={`critical-warning ${String(result.overall_risk_level).toLowerCase()}`}>
           <AlertTriangle size={24} />
@@ -690,19 +855,53 @@ function RiskResult({ result, loading }) {
 }
 
 function DecisionPanel({ result, onDecision, message, loading }) {
+  const [decisionNote, setDecisionNote] = useState("");
+  const [testDraft, setTestDraft] = useState({
+    test_name: "CBC, kreatinin, ALT/AST",
+    test_date: new Date().toISOString().slice(0, 10),
+    test_note: ""
+  });
+
+  function requestTest() {
+    onDecision("request_further_test", {
+      decision_note: decisionNote,
+      test_name: testDraft.test_name,
+      test_date: testDraft.test_date,
+      test_note: testDraft.test_note
+    });
+  }
+
   return (
     <section className="panel" id="decision">
       <div className="panel-heading">
         <div>
           <h3>Doktor karar paneli</h3>
-          <p>Klinik işlem öncesinde insan değerlendirmesi gereklidir.</p>
+          <p>Klinik karar ve ek tetkik bilgisi kaydedilir.</p>
         </div>
       </div>
       <div className="decision-actions">
-        <button disabled={!result || loading} onClick={() => onDecision("approve")}><CheckCircle2 size={18} /> Onayla</button>
-        <button disabled={!result || loading} onClick={() => onDecision("reject")}><XCircle size={18} /> Reddet</button>
-        <button disabled={!result || loading} onClick={() => onDecision("modify")}><ClipboardCheck size={18} /> Düzenle</button>
-        <button disabled={!result || loading} onClick={() => onDecision("request_further_test")}><FlaskConical size={18} /> Ek tetkik iste</button>
+        <button disabled={!result || loading} onClick={() => onDecision("approve", { decision_note: decisionNote })}><CheckCircle2 size={18} /> Onayla</button>
+        <button disabled={!result || loading} onClick={() => onDecision("reject", { decision_note: decisionNote })}><XCircle size={18} /> Reddet</button>
+        <button disabled={!result || loading} onClick={() => onDecision("modify", { decision_note: decisionNote })}><ClipboardCheck size={18} /> Duzenle</button>
+        <button disabled={!result || loading} onClick={requestTest}><FlaskConical size={18} /> Tetkik iste</button>
+      </div>
+      <div className="decision-note-grid">
+        <label>
+          Karar notu
+          <textarea value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} placeholder="Doktor notu" />
+        </label>
+        <label>
+          Tetkik adi
+          <input value={testDraft.test_name} onChange={(event) => setTestDraft({ ...testDraft, test_name: event.target.value })} />
+        </label>
+        <label>
+          Tetkik tarihi
+          <input type="date" value={testDraft.test_date} onChange={(event) => setTestDraft({ ...testDraft, test_date: event.target.value })} />
+        </label>
+        <label>
+          Tetkik aciklamasi
+          <textarea value={testDraft.test_note} onChange={(event) => setTestDraft({ ...testDraft, test_note: event.target.value })} placeholder="Hastaya ve doktora gorunecek not" />
+        </label>
       </div>
       {message && <div className="alert success">{message}</div>}
       <SafetyNotice compact />
@@ -866,7 +1065,20 @@ function translateValue(value) {
     "Alcohol use": "Alkol kullanımı",
     "Multiple chronic diseases": "Çoklu kronik hastalık",
     Polypharmacy: "Çoklu ilaç kullanımı",
-    "Puq.ai service is currently unavailable. Showing fallback demo result.": "Puq.ai servisine şu anda ulaşılamıyor. Güvenli yedek sonuç gösteriliyor.",
+    "Puq.ai service is currently unavailable. Showing fallback demo result.": "Puq.ai servisine su anda ulasilamiyor. Guvenli yedek sonuc gosteriliyor.",
+    "Puq.ai workflow istegi aldi ancak beklenen yapilandirilmis JSON'u dondurmedi. Guvenli yedek sonuc gosteriliyor.": "Puq.ai workflow istegi aldi ancak beklenen yapilandirilmis JSON'u dondurmedi. Guvenli yedek sonuc gosteriliyor.",
+    "Puq.ai analizi arka planda basladi. Sonuc hazir olana kadar yerel guvenlik analizi gosteriliyor.": "Puq.ai analizi arka planda basladi. Sonuc hazir olana kadar yerel guvenlik analizi gosteriliyor.",
+    "Puq.ai analizi henuz tamamlanmadi.": "Puq.ai analizi henuz tamamlanmadi.",
+    "Puq.ai calisti ancak execution detayinda yapilandirilmis risk JSON'u bulunamadi.": "Puq.ai calisti ancak execution detayinda yapilandirilmis risk JSON'u bulunamadi.",
+    "Puq.ai run basladi ancak execution sonucu backend tarafindan okunamadi. PUQ_API_KEY gercek API key olmali ve execution endpoint erisimi acik olmali.": "Puq.ai run basladi ancak execution sonucu backend tarafindan okunamadi. PUQ_API_KEY gercek API key olmali ve execution endpoint erisimi acik olmali.",
+    "PUQ_API_KEY is not configured": "PUQ_API_KEY ayarlanmamis. .env dosyasina gercek Puq.ai API key yazilmali.",
+    response_format: "Cevap formati hatasi",
+    request_failed: "Istek basarisiz",
+    unexpected: "Beklenmeyen hata",
+    "Puq.ai yaniti beklenen yapilandirilmis ilac risk JSON'unu icermiyor.": "Puq.ai yaniti beklenen yapilandirilmis ilac risk JSON'unu icermiyor.",
+    "Puq.ai yanitinda overall_risk_score veya overall_risk_level alani eksik.": "Puq.ai yanitinda overall_risk_score veya overall_risk_level alani eksik.",
+    "Puq.ai response did not contain structured medication risk JSON": "Puq.ai yaniti beklenen yapilandirilmis ilac risk JSON'unu icermiyor.",
+    "Puq.ai response is missing overall_risk_score and overall_risk_level": "Puq.ai yanitinda overall_risk_score veya overall_risk_level alani eksik.",
     "This result must be reviewed by a doctor before any clinical action. Lower-risk alternatives are shown only as decision support options.": "Bu sonuç herhangi bir klinik işlemden önce doktor tarafından değerlendirilmelidir. Daha düşük riskli alternatifler yalnızca karar desteği amacıyla gösterilir.",
     "Doctor review is required before any clinical action.": "Herhangi bir klinik işlemden önce doktor değerlendirmesi gereklidir.",
     "Monitor clinically and verify patient-specific contraindications.": "Klinik olarak izleyin ve hastaya özel kontrendikasyonları doğrulayın.",
