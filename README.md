@@ -1,206 +1,200 @@
-# Base41
+# MediGuard
 
-![Base41 Cover](https://via.placeholder.com/1200x500?text=Base41+Project+Cover)
+![MediGuard Cover](https://via.placeholder.com/1200x500?text=MediGuard+Project+Cover)
+
+MediGuard is a clinical medication safety MVP for reviewing patient profiles, current treatments and newly added medicines in one workflow. We built it as a doctor-focused decision support interface with a patient portal, synthetic oncology-oriented patient data and Puq.ai-assisted medication risk analysis.
+
+> This project is for clinical decision support only. It does not replace professional medical judgment and must not be used as a direct medication instruction.
 
 ## About the Project
 
-**Base41** is a software project developed with a clean, modular and maintainable structure.
+MediGuard helps doctors evaluate medication risk before adding a new medicine to a patient's active treatment plan. The app combines patient demographics, diagnoses, allergies, lab values, current medications and medication catalog data, then sends a structured payload to a Puq.ai workflow for risk scoring.
 
-The project focuses on providing a simple, understandable and expandable codebase while keeping the user experience clear and functional.
+We designed the project around a clear doctor workflow:
 
-This repository contains the source code, project structure and core implementation of Base41. It is designed to be easy to understand, easy to improve and suitable for future development.
+1. Log in as a doctor and review assigned patients.
+2. Inspect patient diagnoses, lab values, allergies, risk factors and current medications.
+3. Enter a new medication with dosage and frequency.
+4. Review the structured Puq.ai risk result, detected interactions and safer alternatives.
+5. Save the doctor decision or request additional tests.
 
-> You can replace this section with a more specific explanation about what the project does.
-
----
+Patients can also log in to view their treatment information, assigned doctor, active medications and risk-related factors.
 
 ## Preview
 
-### Main Screen
+### Doctor Dashboard
 
-![Main Screen](https://via.placeholder.com/1000x600?text=Main+Screen+Screenshot)
+![Doctor Dashboard](https://via.placeholder.com/1000x600?text=Doctor+Dashboard+Screenshot)
 
-### Feature Preview
+### Medication Risk Analysis
 
-![Feature Preview](https://via.placeholder.com/1000x600?text=Feature+Preview+Screenshot)
+![Medication Risk Analysis](https://via.placeholder.com/1000x600?text=Medication+Risk+Analysis+Screenshot)
 
-### Project Demo
+### Patient Portal
 
-![Demo](https://via.placeholder.com/1000x600?text=Demo+Screenshot+or+GIF)
-
----
+![Patient Portal](https://via.placeholder.com/1000x600?text=Patient+Portal+Screenshot)
 
 ## Features
 
-- Clean and understandable project structure
-- Modular code organization
-- Easy-to-extend architecture
-- User-friendly interface
-- Maintainable and scalable development approach
-- Suitable for future improvements and new features
-
----
+- Doctor and patient login with seeded demo accounts
+- Synthetic patient database with oncology, chronic disease, allergy, lab and medication data
+- Doctor dashboard with patient search, risk summaries and assigned patient details
+- Medication catalog validation before risk analysis
+- Puq.ai webhook integration for structured medication risk analysis
+- Low, medium and high risk scoring with interaction details
+- Safer alternative suggestions for medium/high-risk cases when available
+- Doctor decision workflow for approve, reject, modify or request further tests
+- Requested test tracking on patient records
+- Patient portal for treatment and medication safety visibility
 
 ## Technologies Used
 
-> Update this section depending on the real technologies used in the project.
-
-- **Frontend:** HTML / CSS / JavaScript
-- **Backend:** Node.js / Express / Other
-- **Database:** SQLite / MongoDB / PostgreSQL / Other
-- **Tools:** Git, GitHub, VS Code
-- **Other:** Add any libraries, APIs or frameworks used in the project
-
----
+- **Frontend:** React 18, Vite, CSS, lucide-react
+- **Backend:** FastAPI, Pydantic, Uvicorn
+- **Database:** SQLite
+- **AI workflow:** Puq.ai webhook integration
+- **Package manager:** pnpm
+- **Other tools:** Git, Python virtual environment
 
 ## Project Structure
 
-```bash
-base41/
-│
-├── src/
-│   ├── components/
-│   ├── pages/
-│   ├── assets/
-│   └── utils/
-│
-├── public/
-│
-├── README.md
-├── package.json
-└── .gitignore
+```text
+.
+|-- backend/
+|   |-- main.py
+|   |-- database.py
+|   `-- services/
+|       |-- medication_catalog.py
+|       `-- puq_ai_service.py
+|-- data/
+|   `-- oncology_risk.json
+|-- src/
+|   |-- App.jsx
+|   |-- main.jsx
+|   `-- styles.css
+|-- .env.example
+|-- index.html
+|-- package.json
+|-- pnpm-lock.yaml
+|-- PUQ_WORKFLOW.md
+|-- requirements.txt
+`-- README.md
 ```
-
-> The folder structure above is an example. You can update it according to the real project files.
-
----
 
 ## Installation
 
-To run the project locally, follow these steps:
-
-### 1. Clone the repository
+Clone the repository and move into the project directory:
 
 ```bash
-git clone https://github.com/zozoselim/base41.git
+git clone <repository-url>
+cd <project-directory>
 ```
 
-### 2. Go to the project directory
+Install frontend dependencies:
 
 ```bash
-cd base41
+pnpm install
 ```
 
-### 3. Install dependencies
+Create and configure the backend environment:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+Update `.env` with real Puq.ai values when you want to use live workflow responses:
+
+```env
+PUQ_WEBHOOK_URL=your_puq_ai_sync_webhook_url
+PUQ_API_KEY=your_puq_ai_api_key
+PUBLIC_BACKEND_URL=https://your-public-backend-url
+```
+
+## Running the Project
+
+Start the backend API:
 
 ```bash
-npm install
+uvicorn backend.main:app --reload
 ```
 
-### 4. Start the project
+The API runs at:
+
+```text
+http://localhost:8000
+```
+
+Start the frontend in another terminal:
 
 ```bash
-npm start
+pnpm dev
 ```
 
-or, if the project uses a different command:
+The app runs at:
 
-```bash
-npm run dev
+```text
+http://localhost:5173
 ```
 
----
-
-## Usage
-
-After starting the project, open it in your browser:
-
-```bash
-http://localhost:3000
-```
-
-or use the terminal output URL depending on your development environment.
-
----
+If the frontend needs a custom backend URL, set `VITE_API_URL` before running Vite.
 
 ## Screenshots
 
-You can replace the image links below with real screenshots from the project.
+Replace the placeholder image links below with real screenshots from the project.
 
 | Page | Screenshot |
 |---|---|
-| Home Page | ![Home Page](https://via.placeholder.com/600x350?text=Home+Page) |
-| Dashboard | ![Dashboard](https://via.placeholder.com/600x350?text=Dashboard) |
-| Detail Page | ![Detail Page](https://via.placeholder.com/600x350?text=Detail+Page) |
+| Login Page | ![Login Page](https://via.placeholder.com/600x350?text=Login+Page) |
+| Doctor Dashboard | ![Doctor Dashboard](https://via.placeholder.com/600x350?text=Doctor+Dashboard) |
+| Patient Profile | ![Patient Profile](https://via.placeholder.com/600x350?text=Patient+Profile) |
+| Risk Result | ![Risk Result](https://via.placeholder.com/600x350?text=Risk+Result) |
+| Patient Portal | ![Patient Portal](https://via.placeholder.com/600x350?text=Patient+Portal) |
 
----
+## Demo Accounts
 
-## Roadmap
+Seeded demo users use the same password:
 
-Possible future improvements:
-
-- [ ] Improve UI/UX design
-- [ ] Add more detailed documentation
-- [ ] Add authentication system
-- [ ] Add database integration
-- [ ] Improve responsive design
-- [ ] Add tests
-- [ ] Optimize performance
-- [ ] Deploy the project online
-
----
-
-## What I Learned
-
-While developing this project, I improved my skills in:
-
-- Project planning and structure
-- Writing clean and reusable code
-- Working with Git and GitHub
-- Building maintainable software
-- Managing frontend and backend logic
-- Debugging and improving project quality
-
----
-
-## Contributing
-
-Contributions, issues and feature requests are welcome.
-
-To contribute:
-
-1. Fork the repository
-2. Create a new branch
-
-```bash
-git checkout -b feature/your-feature-name
+```text
+Password: demo123
 ```
 
-3. Commit your changes
-
-```bash
-git commit -m "Add new feature"
+```text
+Doctor TC: 10000000001
+Patient TC: 20000000001
 ```
 
-4. Push to the branch
+## Puq.ai Workflow
 
-```bash
-git push origin feature/your-feature-name
-```
+The backend sends medication risk payloads to the Puq.ai webhook configured in `.env`. The expected workflow behavior, response schema and routing details are documented in `PUQ_WORKFLOW.md`.
 
-5. Open a Pull Request
+If the Puq.ai response is unavailable or does not contain the expected structured JSON, the backend returns a safe fallback result so the UI can still show a decision-support response.
 
----
+## API Overview
 
-## Contact
+- `GET /health` checks API status.
+- `POST /auth/login` authenticates doctor or patient demo users.
+- `GET /doctors` returns seeded doctors.
+- `GET /patients?doctor_id={id}` returns assigned patients.
+- `GET /patients/{patient_id}` returns patient details, medications, diagnosis codes and requested tests.
+- `GET /medication-catalog` returns supported medicines.
+- `POST /analyze-new-medicine` runs the medication risk analysis.
+- `POST /doctor-decision` saves the doctor's decision.
+- `POST /patients/{patient_id}/requested-tests` creates a requested test record.
 
-**Developer:** Sefa Selim Tura  
-**GitHub:** [@zozoselim](https://github.com/zozoselim)
+## What We Learned
 
----
+While developing MediGuard, we improved our skills in:
+
+- Structuring a full-stack clinical decision support MVP
+- Connecting a React interface with a FastAPI backend
+- Modeling patient, doctor, medication and decision records in SQLite
+- Preparing reliable AI workflow payloads and validating structured responses
+- Designing safer fallback behavior for external AI workflow failures
+- Presenting medical risk information clearly without replacing doctor judgment
 
 ## Project Status
 
-This project is currently under development.
-
-New features, improvements and fixes may be added over time.
+MediGuard is currently an MVP under active development. We may continue improving the UI, expanding the medication catalog, strengthening tests, refining the Puq.ai workflow and preparing deployment steps.
