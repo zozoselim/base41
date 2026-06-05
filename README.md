@@ -1,97 +1,206 @@
-# OncoSafe Vision AI
+# Base41
 
-OncoSafe Vision AI, doktorlar için hazırlanmış bir sağlık hackathon MVP'sidir. Sistem, çoklu ilaç kullanan sentetik bir hastaya yeni ilaç eklenirken oluşabilecek riski incelemeye yardımcı olan bir klinik karar destek prototipidir.
+![Base41 Cover](https://via.placeholder.com/1200x500?text=Base41+Project+Cover)
 
-Önemli güvenlik kuralları:
+## About the Project
 
-- Sistem hiçbir zaman nihai tıbbi karar vermez.
-- Sistem hastaya ilaç başlatma, durdurma veya değiştirme talimatı vermez.
-- Tüm sonuçlar yalnızca klinik karar desteği olarak gösterilir.
-- Orta ve yüksek risk doktor değerlendirmesi gerektirir.
-- Otomatik oluşturulan tüm veriler sentetiktir.
+**Base41** is a software project developed with a clean, modular and maintainable structure.
 
-## Teknoloji
+The project focuses on providing a simple, understandable and expandable codebase while keeping the user experience clear and functional.
 
-- Frontend: React + Vite
-- Backend: FastAPI
-- Veritabanı: SQLite
-- Yapay zeka entegrasyonu: Güvenli yedek yanıtlı Puq.ai webhook/API
+This repository contains the source code, project structure and core implementation of Base41. It is designed to be easy to understand, easy to improve and suitable for future development.
 
-## Yerelde Çalıştırma
+> You can replace this section with a more specific explanation about what the project does.
 
-Backend:
+---
+
+## Preview
+
+### Main Screen
+
+![Main Screen](https://via.placeholder.com/1000x600?text=Main+Screen+Screenshot)
+
+### Feature Preview
+
+![Feature Preview](https://via.placeholder.com/1000x600?text=Feature+Preview+Screenshot)
+
+### Project Demo
+
+![Demo](https://via.placeholder.com/1000x600?text=Demo+Screenshot+or+GIF)
+
+---
+
+## Features
+
+- Clean and understandable project structure
+- Modular code organization
+- Easy-to-extend architecture
+- User-friendly interface
+- Maintainable and scalable development approach
+- Suitable for future improvements and new features
+
+---
+
+## Technologies Used
+
+> Update this section depending on the real technologies used in the project.
+
+- **Frontend:** HTML / CSS / JavaScript
+- **Backend:** Node.js / Express / Other
+- **Database:** SQLite / MongoDB / PostgreSQL / Other
+- **Tools:** Git, GitHub, VS Code
+- **Other:** Add any libraries, APIs or frameworks used in the project
+
+---
+
+## Project Structure
 
 ```bash
-py -3 -m pip install -r requirements.txt
-py -3 -m uvicorn backend.main:app --reload
+base41/
+│
+├── src/
+│   ├── components/
+│   ├── pages/
+│   ├── assets/
+│   └── utils/
+│
+├── public/
+│
+├── README.md
+├── package.json
+└── .gitignore
 ```
 
-Frontend:
+> The folder structure above is an example. You can update it according to the real project files.
+
+---
+
+## Installation
+
+To run the project locally, follow these steps:
+
+### 1. Clone the repository
 
 ```bash
-corepack pnpm install
-corepack pnpm dev
+git clone https://github.com/zozoselim/base41.git
 ```
 
-Açılacak adres:
+### 2. Go to the project directory
 
-```text
-http://127.0.0.1:5173
+```bash
+cd base41
 ```
 
-API dokümantasyonu:
+### 3. Install dependencies
 
-```text
-http://127.0.0.1:8000/docs
+```bash
+npm install
 ```
 
-## Puq.ai Yapılandırması
+### 4. Start the project
 
-`.env` dosyasını oluşturun veya düzenleyin:
-
-```env
-PUQ_WEBHOOK_URL=your_puq_ai_webhook_url
-PUQ_API_KEY=your_puq_ai_api_key
+```bash
+npm start
 ```
 
-Backend Puq.ai servisine şu başlıkla istek gönderir:
+or, if the project uses a different command:
 
-```json
-{
-  "Content-Type": "application/json",
-  "Authorization": "Token YOUR_PUQ_API_KEY"
-}
+```bash
+npm run dev
 ```
 
-Puq.ai kullanılamazsa veya yapılandırılmamışsa `/analyze-new-medicine` güvenli bir yedek JSON yanıtı döndürür:
+---
 
-```json
-{
-  "is_fallback": true,
-  "warning": "Puq.ai servisine şu anda ulaşılamıyor. Güvenli demo sonucu gösteriliyor."
-}
+## Usage
+
+After starting the project, open it in your browser:
+
+```bash
+http://localhost:3000
 ```
 
-## Ana Akış
+or use the terminal output URL depending on your development environment.
 
-Doktor girişi
--> Hasta seçimi
--> Hasta profili ve mevcut ilaçların görüntülenmesi
--> Yeni ilacın girilmesi
--> FastAPI `/analyze-new-medicine`
--> SQLite sorgusu
--> Puq.ai webhook veya güvenli yedek yanıt
--> Frontend risk sonucu gösterimi
--> Doktor kararının `/doctor-decision` üzerinden kaydedilmesi
+---
 
-## API Endpointleri
+## Screenshots
 
-- `POST /auth/login`
-- `GET /doctors`
-- `GET /patients`
-- `GET /patients/{patient_id}`
-- `GET /patients/{patient_id}/medicines`
-- `POST /analyze-new-medicine`
-- `POST /doctor-decision`
+You can replace the image links below with real screenshots from the project.
 
-SQLite veritabanı backend başlangıcında otomatik olarak `oncosafe.sqlite3` adıyla oluşturulur. Veritabanına 5 doktor, 50 sentetik hasta ve hasta başına 2 ile 6 arasında ilaç otomatik eklenir.
+| Page | Screenshot |
+|---|---|
+| Home Page | ![Home Page](https://via.placeholder.com/600x350?text=Home+Page) |
+| Dashboard | ![Dashboard](https://via.placeholder.com/600x350?text=Dashboard) |
+| Detail Page | ![Detail Page](https://via.placeholder.com/600x350?text=Detail+Page) |
+
+---
+
+## Roadmap
+
+Possible future improvements:
+
+- [ ] Improve UI/UX design
+- [ ] Add more detailed documentation
+- [ ] Add authentication system
+- [ ] Add database integration
+- [ ] Improve responsive design
+- [ ] Add tests
+- [ ] Optimize performance
+- [ ] Deploy the project online
+
+---
+
+## What I Learned
+
+While developing this project, I improved my skills in:
+
+- Project planning and structure
+- Writing clean and reusable code
+- Working with Git and GitHub
+- Building maintainable software
+- Managing frontend and backend logic
+- Debugging and improving project quality
+
+---
+
+## Contributing
+
+Contributions, issues and feature requests are welcome.
+
+To contribute:
+
+1. Fork the repository
+2. Create a new branch
+
+```bash
+git checkout -b feature/your-feature-name
+```
+
+3. Commit your changes
+
+```bash
+git commit -m "Add new feature"
+```
+
+4. Push to the branch
+
+```bash
+git push origin feature/your-feature-name
+```
+
+5. Open a Pull Request
+
+---
+
+## Contact
+
+**Developer:** Sefa Selim Tura  
+**GitHub:** [@zozoselim](https://github.com/zozoselim)
+
+---
+
+## Project Status
+
+This project is currently under development.
+
+New features, improvements and fixes may be added over time.
