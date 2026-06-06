@@ -24,15 +24,16 @@ Patients can also log in to view their treatment information, assigned doctor, a
 
 ### Doctor Dashboard
 
-![Doctor Dashboard]([https://github.com/zozoselim/base41/blob/28e2c5e19dfb251fb211f5da0a53c05796b86973/photos/Screenshot%202026-06-05%20185258.png])
+![Doctor Dashboard](https://github.com/zozoselim/base41/blob/28e2c5e19dfb251fb211f5da0a53c05796b86973/photos/Screenshot%202026-06-05%20185258.png)
+![](https://github.com/zozoselim/base41/blob/ae5009469dc7dec918c4a3035b2b870aa32aed6c/photos/Screenshot%202026-06-05%20185327.png)
 
 ### Medication Risk Analysis
 
-![Medication Risk Analysis](https://via.placeholder.com/1000x600?text=Medication+Risk+Analysis+Screenshot)
+![Medication Risk Analysis](https://github.com/zozoselim/base41/blob/ae5009469dc7dec918c4a3035b2b870aa32aed6c/photos/Screenshot%202026-06-05%20185650.png)
 
 ### Patient Portal
 
-![Patient Portal](https://via.placeholder.com/1000x600?text=Patient+Portal+Screenshot)
+![Patient Portal](https://github.com/zozoselim/base41/blob/ae5009469dc7dec918c4a3035b2b870aa32aed6c/photos/Screenshot%202026-06-05%20185457.png)
 
 ## Features
 
@@ -143,15 +144,13 @@ If the frontend needs a custom backend URL, set `VITE_API_URL` before running Vi
 
 ## Screenshots
 
-Replace the placeholder image links below with real screenshots from the project.
-
 | Page | Screenshot |
 |---|---|
-| Login Page | ![Login Page](https://via.placeholder.com/600x350?text=Login+Page) |
-| Doctor Dashboard | ![Doctor Dashboard](https://via.placeholder.com/600x350?text=Doctor+Dashboard) |
-| Patient Profile | ![Patient Profile](https://via.placeholder.com/600x350?text=Patient+Profile) |
-| Risk Result | ![Risk Result](https://via.placeholder.com/600x350?text=Risk+Result) |
-| Patient Portal | ![Patient Portal](https://via.placeholder.com/600x350?text=Patient+Portal) |
+| Login Page | ![Login Page](https://github.com/zozoselim/base41/blob/28e2c5e19dfb251fb211f5da0a53c05796b86973/photos/Screenshot%202026-06-05%20185258.png) |
+| Doctor Dashboard | ![Doctor Dashboard](https://github.com/zozoselim/base41/blob/28e2c5e19dfb251fb211f5da0a53c05796b86973/photos/Screenshot%202026-06-05%20185258.png) |
+| Patient Profile | ![Patient Profile](https://github.com/zozoselim/base41/blob/28e2c5e19dfb251fb211f5da0a53c05796b86973/photos/Screenshot%202026-06-05%20185258.png) |
+| Risk Result | ![Risk Result](https://github.com/zozoselim/base41/blob/28e2c5e19dfb251fb211f5da0a53c05796b86973/photos/Screenshot%202026-06-05%20185258.png) |
+| Patient Portal | ![Patient Portal](https://github.com/zozoselim/base41/blob/28e2c5e19dfb251fb211f5da0a53c05796b86973/photos/Screenshot%202026-06-05%20185258.png) |
 
 ## Demo Accounts
 
