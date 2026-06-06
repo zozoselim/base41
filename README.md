@@ -24,7 +24,7 @@ Patients can also log in to view their treatment information, assigned doctor, a
 
 ### Doctor Dashboard
 
-![Doctor Dashboard](https://via.placeholder.com/1000x600?text=Doctor+Dashboard+Screenshot)
+![Doctor Dashboard]([https://via.placeholder.com/1000x600?text=Doctor+Dashboard+Screenshot](https://github.com/zozoselim/base41/blob/18e10dfb73c6acfa414a79f0519f1c7bd0199a17/photos/Screenshot%202026-06-05%20185258.png))
 
 ### Medication Risk Analysis
 
